@@ -21,6 +21,7 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { useNavigate } from 'react-router-dom';
 import { containerApi, type ContainerStats } from '../services/api';
 import { useTranslate } from '../i18n';
+import { useToast } from './Toast';
 
 interface BasicInfoProps {
     name: string;
@@ -37,6 +38,7 @@ export const BasicInfo = ({ name, node_id }: BasicInfoProps) => {
     const theme = useTheme();
     const navigate = useNavigate();
     const t = useTranslate();
+    const toast = useToast();
 
     const fetchStats = async () => {
         setLoading(true);
@@ -100,8 +102,9 @@ export const BasicInfo = ({ name, node_id }: BasicInfoProps) => {
         setActionLoading(action);
         try {
             await containerApi.action(name, action, node_id);
+            toast.success(`${name} → ${action} ✓`);
             setTimeout(fetchStats, 1500);
-        } catch (e) { console.error(e); }
+        } catch (e) { toast.error(`${name} ${action} ✗`); }
         finally { setActionLoading(''); }
     };
 
@@ -109,8 +112,9 @@ export const BasicInfo = ({ name, node_id }: BasicInfoProps) => {
         setActionLoading('delete');
         try {
             await containerApi.action(name, 'delete', node_id, deleteDialog.deleteData);
+            toast.success(`${name} deleted ✓`);
             navigate('/admin');
-        } catch (e) { console.error(e); }
+        } catch (e) { toast.error(`${name} delete ✗`); }
         finally {
             setActionLoading('');
             setDeleteDialog({ open: false, deleteData: false });

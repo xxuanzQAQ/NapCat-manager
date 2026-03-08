@@ -12,6 +12,7 @@ import urllib.request
 import urllib.error
 import docker
 import docker.errors
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from typing import List, Dict, Optional, Any
 
 from services.log import logger
@@ -20,11 +21,17 @@ from services.config import get_data_dir
 
 # 登录状态缓存：{container_name: {uin, nickname, ts, method}}
 _login_cache: Dict[str, Dict] = {}
-_LOGIN_CACHE_TTL = 15  # 秒，轮询间隔较大时缓存 15s
+_LOGIN_CACHE_TTL = 8  # 秒，配合前端 5s QR 轮询，第二次即可刷新
 
 # Stats 缓存：{container_name: {stats_dict, ts}}
 _stats_cache: Dict[str, Dict] = {}
 _STATS_CACHE_TTL = 8  # 秒，stats 采集较慢(1-2s)，缓存 8s
+
+# Docker API 调用专用线程池（隔离卡死容器，避免阻塞主线程池）
+# 60+ 实例场景：每实例 check_login 需 1-2 个线程，32 workers 可同时处理 16-32 实例
+_docker_pool = ThreadPoolExecutor(max_workers=32, thread_name_prefix="docker-api")
+_DOCKER_STATS_TIMEOUT = 3   # 秒，c.stats(stream=False) 超时
+_DOCKER_LOGS_TIMEOUT = 2    # 秒，c.logs() 超时
 
 
 def _normalize_uin(raw: str) -> str:
@@ -50,7 +57,11 @@ class DockerManager:
         if not self.client:
             return []
         try:
-            containers = self.client.containers.list(all=True)
+            future = _docker_pool.submit(self.client.containers.list, all=True)
+            containers = future.result(timeout=_DOCKER_STATS_TIMEOUT)
+        except FuturesTimeoutError:
+            logger.warning("Docker 容器列表获取超时")
+            return []
         except docker.errors.DockerException as e:
             logger.error("列举容器失败: %s", e)
             return []
@@ -144,30 +155,44 @@ class DockerManager:
             return ""
         try:
             c = self.client.containers.get(name)
-            return c.logs(tail=lines).decode("utf-8", errors="replace")
+            future = _docker_pool.submit(c.logs, tail=lines)
+            raw = future.result(timeout=_DOCKER_LOGS_TIMEOUT + 3)
+            return raw.decode("utf-8", errors="replace")
         except docker.errors.NotFound:
             return ""
+        except FuturesTimeoutError:
+            logger.warning("容器 %s 日志获取超时", name)
+            return "[日志获取超时，容器可能无响应]\n"
         except docker.errors.APIError as e:
             logger.error("获取容器 %s 日志失败: %s", name, e)
             return ""
 
     def get_container_file_binary(self, name: str, path: str) -> Optional[bytes]:
-        """通过 docker cp (tar) 从容器内读取文件"""
+        """通过 docker cp (tar) 从容器内读取文件，带超时保护"""
         if not self.client:
             return None
         try:
             c = self.client.containers.get(name)
-            bits, _ = c.get_archive(path)
-            tar_stream = io.BytesIO()
-            for chunk in bits:
-                tar_stream.write(chunk)
-            tar_stream.seek(0)
-            with tarfile.open(fileobj=tar_stream) as tar:
-                member = tar.next()
-                if member:
-                    file_obj = tar.extractfile(member)
-                    if file_obj:
-                        return file_obj.read()
+
+            def _read_archive():
+                bits, _ = c.get_archive(path)
+                tar_stream = io.BytesIO()
+                for chunk in bits:
+                    tar_stream.write(chunk)
+                tar_stream.seek(0)
+                with tarfile.open(fileobj=tar_stream) as tar:
+                    member = tar.next()
+                    if member:
+                        file_obj = tar.extractfile(member)
+                        if file_obj:
+                            return file_obj.read()
+                return None
+
+            future = _docker_pool.submit(_read_archive)
+            return future.result(timeout=5)
+        except FuturesTimeoutError:
+            logger.warning("容器 %s 文件读取超时: %s", name, path)
+            return None
         except docker.errors.NotFound:
             return None
         except (docker.errors.APIError, tarfile.TarError, OSError) as e:
@@ -176,7 +201,9 @@ class DockerManager:
         return None
 
     def get_basic_stats(self, name: str) -> Dict:
-        """获取容器基础资源统计 (CPU / 内存)，带内存缓存（TTL 8s）"""
+        """获取容器基础资源统计 (CPU / 内存)，带内存缓存（TTL 8s）。
+        Docker stats API 有超时保护，避免卡死容器阻塞线程池。
+        """
         now = time.time()
         cached = _stats_cache.get(name)
         if cached and now - cached.get("_ts", 0) < _STATS_CACHE_TTL:
@@ -197,7 +224,21 @@ class DockerManager:
                 _stats_cache[name] = {**result, "_ts": now}
                 return result
 
-            stats = c.stats(stream=False)
+            # 用线程池 + 超时包裹 Docker stats API，防止卡死容器阻塞
+            future = _docker_pool.submit(c.stats, stream=False)
+            try:
+                stats = future.result(timeout=_DOCKER_STATS_TIMEOUT)
+            except (FuturesTimeoutError, Exception) as e:
+                logger.warning("容器 %s stats 超时或异常: %s", name, e)
+                # 超时时返回上次缓存或零值
+                if cached:
+                    return {k: v for k, v in cached.items() if k != "_ts"}
+                return {
+                    "status": c.status,
+                    "created": c.attrs.get("Created", ""),
+                    "cpu_percent": 0.0, "mem_usage": 0.0, "mem_limit": 0.0,
+                }
+
             mem_usage = stats.get("memory_stats", {}).get("usage", 0)
             mem_limit = stats.get("memory_stats", {}).get("limit", 0)
             cpu_delta = (
@@ -297,29 +338,46 @@ class DockerManager:
             except (json.JSONDecodeError, OSError):
                 pass
 
-        # Version from logs — 只取尾部 200 行（够用且快）
+        # Version from logs — 用线程池 + 超时包裹，防止卡死容器阻塞
         try:
-            logs_tail = c.logs(tail=200).decode("utf-8", errors="ignore")
+            future = _docker_pool.submit(c.logs, tail=200)
+            raw_logs = future.result(timeout=_DOCKER_LOGS_TIMEOUT)
+            logs_tail = raw_logs.decode("utf-8", errors="ignore")
             ver_match = re.search(r"NapCat\.Core Version:\s*([\d.]+)", logs_tail)
             if ver_match:
                 info["version"] = ver_match.group(1)
-        except docker.errors.APIError:
+        except (FuturesTimeoutError, docker.errors.APIError, Exception):
             pass
 
         return info
 
     def get_stats(self, name: str) -> Dict:
-        """获取完整统计 (基础资源 + NapCat 信息 + 登录状态)
+        """获取完整统计 (基础资源 + NapCat 信息 + 登录状态)。
 
-        登录检测在这里独立触发（有 15s 缓存），与 get_napcat_info 分离。
-        get_napcat_info 只读缓存（零阻塞），确保页面不会因登录检测而卡住。
+        三个子任务并行执行，各自有超时保护，单个子任务失败不阻塞其他。
         """
-        basic = self.get_basic_stats(name)
+        # 并行提交三个子任务
+        f_basic = _docker_pool.submit(self.get_basic_stats, name)
+        f_napcat = _docker_pool.submit(self.get_napcat_info, name)
+        f_login = _docker_pool.submit(self.check_login_status, name)
+
+        try:
+            basic = f_basic.result(timeout=_DOCKER_STATS_TIMEOUT + 1)
+        except Exception:
+            basic = {}
         if not basic:
             return {}
-        napcat = self.get_napcat_info(name)
-        # 独立触发登录检测（有缓存，大部分时间秒回）
-        login = self.check_login_status(name)
+
+        try:
+            napcat = f_napcat.result(timeout=_DOCKER_LOGS_TIMEOUT + 2)
+        except Exception:
+            napcat = {}
+
+        try:
+            login = f_login.result(timeout=4)
+        except Exception:
+            login = {}
+
         if login.get("logged_in") and login.get("uin"):
             napcat["uin"] = login["uin"]
         return {**basic, **napcat}
@@ -402,31 +460,45 @@ class DockerManager:
             if not webui_port:
                 return {"logged_in": False}
 
-            # 检查 1：/api/qrcode — 有 url 直接否决（确认未登录）
-            try:
-                qr_req = urllib.request.Request(
-                    f"http://127.0.0.1:{webui_port}/api/qrcode",
-                    headers={"User-Agent": "Mozilla/5.0"},
-                )
-                with urllib.request.urlopen(qr_req, timeout=1) as resp:
-                    qr_data = json.loads(resp.read().decode("utf-8"))
-                if qr_data.get("url"):
-                    return {"logged_in": False}  # 有二维码 → 确认未登录
-            except (urllib.error.URLError, json.JSONDecodeError, OSError):
-                pass  # Unauthorized 或连接失败，继续后续检查
+            # 检查 1 + 2 并行：qrcode 和 public/info 同时请求（从 2s→1s）
+            def _fetch_qrcode():
+                try:
+                    qr_req = urllib.request.Request(
+                        f"http://127.0.0.1:{webui_port}/api/qrcode",
+                        headers={"User-Agent": "Mozilla/5.0"},
+                    )
+                    with urllib.request.urlopen(qr_req, timeout=1) as resp:
+                        return json.loads(resp.read().decode("utf-8"))
+                except (urllib.error.URLError, json.JSONDecodeError, OSError):
+                    return None
 
-            # 检查 2：public/info 是否正常（NapCat 在运行）
+            def _fetch_public_info():
+                try:
+                    info_req = urllib.request.Request(
+                        f"http://127.0.0.1:{webui_port}/plugin/napcat-plugin-builtin/api/public/info",
+                        headers={"User-Agent": "Mozilla/5.0"},
+                    )
+                    with urllib.request.urlopen(info_req, timeout=1) as resp:
+                        return json.loads(resp.read().decode("utf-8"))
+                except (urllib.error.URLError, json.JSONDecodeError, OSError):
+                    return None
+
+            f_qr = _docker_pool.submit(_fetch_qrcode)
+            f_info = _docker_pool.submit(_fetch_public_info)
+
+            try:
+                qr_data = f_qr.result(timeout=2)
+            except Exception:
+                qr_data = None
+            if qr_data and qr_data.get("url"):
+                return {"logged_in": False}  # 有二维码 → 确认未登录
+
             napcat_alive = False
             try:
-                info_req = urllib.request.Request(
-                    f"http://127.0.0.1:{webui_port}/plugin/napcat-plugin-builtin/api/public/info",
-                    headers={"User-Agent": "Mozilla/5.0"},
-                )
-                with urllib.request.urlopen(info_req, timeout=1) as resp:
-                    info_data = json.loads(resp.read().decode("utf-8"))
-                if info_data.get("code") == 0 and "data" in info_data:
+                info_data = f_info.result(timeout=2)
+                if info_data and info_data.get("code") == 0 and "data" in info_data:
                     napcat_alive = True
-            except (urllib.error.URLError, json.JSONDecodeError, OSError):
+            except Exception:
                 pass
 
             # 检查 3：qrcode.png 是否停止刷新（mtime > 30s = 不在活跃输出二维码）
@@ -546,6 +618,46 @@ class DockerManager:
         _login_cache[name] = result
         return result
 
+    def batch_check_login(self, names: List[str], timeout: float = 6.0) -> Dict[str, Dict]:
+        """批量并行检测多个容器的登录状态。
+
+        利用线程池并行执行，单个超时不阻塞其他。
+        60+ 实例场景：缓存命中的直接返回，未命中的并行 API 探测。
+        返回 {name: {logged_in, uin, ...}, ...}
+        """
+        results: Dict[str, Dict] = {}
+        need_check: List[str] = []
+        now = time.time()
+
+        # 先过滤：缓存命中的直接返回，无需占线程池
+        for name in names:
+            cached = _login_cache.get(name, {})
+            if now - cached.get("ts", 0) < _LOGIN_CACHE_TTL:
+                results[name] = cached
+            else:
+                need_check.append(name)
+
+        if not need_check:
+            return results
+
+        # 并行提交未命中缓存的检测任务
+        futures = {
+            _docker_pool.submit(self.check_login_status, name): name
+            for name in need_check
+        }
+        from concurrent.futures import as_completed
+        for future in as_completed(futures, timeout=timeout):
+            name = futures[future]
+            try:
+                results[name] = future.result(timeout=0.1)
+            except Exception:
+                results[name] = {"logged_in": False}
+        # 超时未完成的标记为未登录
+        for name in need_check:
+            if name not in results:
+                results[name] = {"logged_in": False}
+        return results
+
     @staticmethod
     def update_login_cache(name: str, event: Dict) -> None:
         """方案 C 预留：插件事件直接更新缓存。
@@ -608,7 +720,8 @@ class DockerManager:
         if not self.client:
             return []
         try:
-            images = self.client.images.list()
+            future = _docker_pool.submit(self.client.images.list)
+            images = future.result(timeout=_DOCKER_STATS_TIMEOUT)
             result = []
             for img in images:
                 tags = img.tags or []
@@ -621,6 +734,9 @@ class DockerManager:
                     "created": created,
                 })
             return result
+        except FuturesTimeoutError:
+            logger.warning("Docker 镜像列表获取超时")
+            return []
         except docker.errors.DockerException as e:
             logger.error("列举镜像失败: %s", e)
             return []

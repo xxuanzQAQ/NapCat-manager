@@ -204,9 +204,20 @@ export const publicApi = {
         return response.json();
     },
 
-    // 获取二维码（不走 request 封装，避免 401 事件）
+    // 获取二维码（不走 request 封装，避免 401 事件）— 单实例管理页面用
     getQR: async (name: string, nodeId: string = 'local'): Promise<{ status: string; url?: string; type?: string; uin?: string }> => {
         const response = await fetch(`${API_BASE}/containers/${name}/qrcode?node_id=${nodeId}`, {
+            credentials: 'include',
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        return response.json();
+    },
+
+    // 批量获取所有容器的 QR 状态（用户面板用，一次请求替代 N 个独立请求）
+    batchQR: async (): Promise<{ status: string; items: Record<string, { status: string; url?: string; type?: string; uin?: string }> }> => {
+        const response = await fetch(`${API_BASE}/public/qr/batch`, {
             credentials: 'include',
         });
         if (!response.ok) {
@@ -243,6 +254,10 @@ export const containerApi = {
     // 获取容器统计信息
     getStats: (name: string, nodeId: string = 'local') =>
         request<ContainerStats>(`/containers/${name}/stats?node_id=${nodeId}`),
+
+    // 批量获取所有容器统计（后端并行+超时隔离，替代逐一请求）
+    getBatchStats: () =>
+        request<{ status: string; stats: Record<string, ContainerStats> }>('/containers/stats/batch'),
 
     // 获取容器日志
     getLogs: (name: string, lines: number = 200, nodeId: string = 'local') =>

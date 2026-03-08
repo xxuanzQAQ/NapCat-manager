@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
     Box, Typography, Button, TextField, Skeleton, IconButton, useTheme,
     Select, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions,
-    FormControlLabel, Checkbox, Pagination
+    FormControlLabel, Checkbox, Pagination, InputAdornment, CircularProgress
 } from '@mui/material';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { containerApi, nodeApi, imageApi, type Container, type Node, type CreateContainerRequest, type DockerImage } from '../services/api';
+import { containerApi, nodeApi, imageApi, type Container, type ContainerStats, type Node, type CreateContainerRequest, type DockerImage } from '../services/api';
+import { useToast } from '../components/Toast';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
@@ -16,25 +17,44 @@ import NapCatIcon from '../components/NapCatIcon';
 import AddIcon from '@mui/icons-material/Add';
 import SettingsIcon from '@mui/icons-material/Settings';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import SearchIcon from '@mui/icons-material/Search';
 import { useTranslate } from '../i18n';
 
 export default function Dashboard() {
     const navigate = useNavigate();
     const theme = useTheme();
     const t = useTranslate();
-    const [containers, setContainers] = useState<Container[]>([]);
+    const toast = useToast();
     const [loading, setLoading] = useState(true);
     const [nodes, setNodes] = useState<Node[]>([]);
     const [selectedNode, setSelectedNode] = useState('local');
+    // Stats 独立存储（CPU/内存等重量级数据，低频 HTTP 获取）
+    const [statsMap, setStatsMap] = useState<Record<string, ContainerStats>>({});
 
     // 批量操作状态
     const [isBatchMode, setIsBatchMode] = useState(false);
     const [selectedContainers, setSelectedContainers] = useState<string[]>([]);
+    // 单容器操作 loading：key = "containerName:action"
+    const [actionLoading, setActionLoading] = useState('');
+    // 批量操作进度
+    const [batchProgress, setBatchProgress] = useState<{ total: number; done: number; ok: number } | null>(null);
 
-    // 分页状态
+    // 容器列表：从 AdminLayout WS 推送的 context 获取（需在 filteredContainers 之前定义）
+    const context = useOutletContext<{ containers?: Container[]; refreshContainers?: () => void }>();
+    const containers = context?.containers || [];
+
+    // 分页 + 搜索状态
     const [page, setPage] = useState(1);
+    const [searchQuery, setSearchQuery] = useState('');
     const rowsPerPage = 12;
-    const filteredContainers = selectedNode === 'all' ? containers : containers.filter(c => c.node_id === selectedNode);
+    const filteredContainers = (selectedNode === 'all' ? containers : containers.filter(c => c.node_id === selectedNode))
+        .filter(c => {
+            if (!searchQuery.trim()) return true;
+            const q = searchQuery.toLowerCase();
+            return c.name.toLowerCase().includes(q)
+                || (c.uin && c.uin.toLowerCase().includes(q))
+                || c.status.toLowerCase().includes(q);
+        });
     const totalPages = Math.ceil(filteredContainers.length / rowsPerPage);
     const displayedContainers = filteredContainers.slice((page - 1) * rowsPerPage, page * rowsPerPage);
 
@@ -59,17 +79,22 @@ export default function Dashboard() {
 
     const handleBatchAction = async (action: string) => {
         if (selectedContainers.length === 0) return;
-
-        try {
-            await Promise.all(
-                selectedContainers.map(name =>
-                    containerApi.action(name, action, selectedNode).catch(console.error)
-                )
-            );
-            fetchContainers();
-            if (context?.fetchContainers) context.fetchContainers();
-            setIsBatchMode(false);
-        } catch (e) { console.error(e); }
+        const total = selectedContainers.length;
+        setBatchProgress({ total, done: 0, ok: 0 });
+        let ok = 0;
+        for (let i = 0; i < total; i++) {
+            try {
+                await containerApi.action(selectedContainers[i], action, selectedNode);
+                ok++;
+            } catch { /* count as fail */ }
+            setBatchProgress({ total, done: i + 1, ok });
+        }
+        const fail = total - ok;
+        if (fail === 0) toast.success(`${t('admin.' + action)} ${ok} ${t('admin.instances')} ✓`);
+        else toast.warning(`${ok} ✓ / ${fail} ✗`);
+        setBatchProgress(null);
+        fetchContainers();
+        setIsBatchMode(false);
     };
     const [openCreate, setOpenCreate] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState(false);
@@ -92,7 +117,17 @@ export default function Dashboard() {
         open: false, name: '', node_id: 'local', deleteData: false
     });
 
-    const context = useOutletContext<{ fetchContainers?: () => void }>();
+    // 首次加载：等待 WS 数据到达或超时后关闭 loading
+    useEffect(() => {
+        if (containers.length > 0 || !loading) return;
+        const timer = setTimeout(() => setLoading(false), 3000); // 3s 兜底
+        return () => clearTimeout(timer);
+    }, []);
+
+    // WS 推送到达后立即关闭 loading
+    useEffect(() => {
+        if (containers.length > 0) setLoading(false);
+    }, [containers]);
 
     const fetchNodes = async () => {
         try {
@@ -103,38 +138,27 @@ export default function Dashboard() {
         }
     };
 
-    const fetchContainers = async () => {
-        try {
-            const data = await containerApi.list();
-            const fetchedContainers = data.containers || [];
-            setContainers(fetchedContainers);
-
-            // Fetch stats for running containers to get QQ avatar (uin)
-            fetchedContainers.forEach(async (c: Container) => {
-                if (c.status === 'running') {
-                    try {
-                        const statsData = await containerApi.getStats(c.name, c.node_id);
-                        if (statsData.uin && statsData.uin !== '未登录 / Not Logged In') {
-                            setContainers(prev => prev.map(container =>
-                                (container.name === c.name && container.node_id === c.node_id)
-                                ? { ...container, uin: statsData.uin }
-                                : container
-                            ));
-                        }
-                    } catch {
-                        // ignore error for stats fetch
-                    }
-                }
-            });
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoading(false);
+    // 手动刷新容器列表（操作后立即反馈）
+    const fetchContainers = useCallback(async () => {
+        if (context?.refreshContainers) {
+            await context.refreshContainers();
         }
-    };
+    }, [context]);
+
+    // Stats 低频轮询（15s）— CPU/内存等重量级数据独立获取
+    const fetchStats = useCallback(async () => {
+        const hasRunning = containers.some(c => c.status === 'running');
+        if (!hasRunning) return;
+        try {
+            const batchData = await containerApi.getBatchStats();
+            setStatsMap(batchData.stats || {});
+        } catch {
+            // batch stats 失败不影响容器列表显示
+        }
+    }, [containers]);
 
     useEffect(() => {
-        fetchContainers();
+        fetchStats(); // 首次加载 stats
         fetchNodes();
 
         // Handle initial node selection from URL
@@ -143,18 +167,20 @@ export default function Dashboard() {
         if (nodeParam) {
             setSelectedNode(nodeParam);
         }
+    }, []);
 
-        // 智能轮询：页面可见时 5s，不可见时暂停
+    // Stats 15s 轮询（页面可见时才跑）
+    useEffect(() => {
         let interval: ReturnType<typeof setInterval>;
         const startPolling = () => {
-            interval = setInterval(fetchContainers, 5000);
+            interval = setInterval(fetchStats, 15000);
         };
         const stopPolling = () => {
             clearInterval(interval);
         };
         const handleVisibility = () => {
             if (document.visibilityState === 'visible') {
-                fetchContainers(); // 切回时立即刷新
+                fetchStats();
                 startPolling();
             } else {
                 stopPolling();
@@ -166,7 +192,7 @@ export default function Dashboard() {
             stopPolling();
             document.removeEventListener('visibilitychange', handleVisibility);
         };
-    }, []);
+    }, [fetchStats]);
 
     const handleAction = async (e: React.MouseEvent, name: string, action: string, node_id: string = 'local') => {
         if (e) e.stopPropagation();
@@ -174,22 +200,24 @@ export default function Dashboard() {
             setDeleteDialog({ open: true, name, node_id, deleteData: false });
             return;
         }
+        const key = `${name}:${action}`;
+        setActionLoading(key);
         try {
             await containerApi.action(name, action, node_id);
+            toast.success(`${name} → ${t('admin.' + action)} ✓`);
             fetchContainers();
-            if (context?.fetchContainers) context.fetchContainers();
         } catch (e) {
-            console.error(e);
-        }
+            toast.error(`${name} ${t('admin.' + action)} ✗`);
+        } finally { setActionLoading(''); }
     };
 
     const confirmDelete = async () => {
         const { name, node_id, deleteData } = deleteDialog;
         try {
             await containerApi.action(name, 'delete', node_id, deleteData);
+            toast.success(`${name} ${t('admin.deleteText')} ✓`);
             fetchContainers();
-            if (context?.fetchContainers) context.fetchContainers();
-        } catch (e) { console.error(e); }
+        } catch (e) { toast.error(`${name} ${t('admin.deleteText')} ✗`); }
         setDeleteDialog({ open: false, name: '', node_id: 'local', deleteData: false });
     };
 
@@ -209,12 +237,12 @@ export default function Dashboard() {
         }
         try {
             await containerApi.create(body);
+            toast.success(`${createForm.name} ${t('admin.deployBtn')} ✓`);
             setCreateForm({ name: '', docker_image: '', webui_port: 0, http_port: 0, ws_port: 0, memory_limit: 0, restart_policy: 'always', network_mode: 'bridge', env_vars: '' });
             setOpenCreate(false);
             setShowAdvanced(false);
             fetchContainers();
-            if (context?.fetchContainers) context.fetchContainers();
-        } catch (e) { console.error(e); }
+        } catch (e) { toast.error(String(e)); }
     };
 
     return (
@@ -242,29 +270,35 @@ export default function Dashboard() {
                 <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
                     {isBatchMode ? (
                         <>
-                            <Button variant="outlined" color="primary" onClick={handleSelectAll} sx={{ borderRadius: 2, height: 38 }}>
+                            <Button variant="outlined" color="primary" onClick={handleSelectAll} disabled={!!batchProgress} sx={{ borderRadius: 2, height: 38 }}>
                                 {selectedContainers.length === containers.length ? t('admin.deselectAll') : t('admin.selectAll')}
                             </Button>
-                            <Button variant="outlined" color="inherit" onClick={() => setIsBatchMode(false)} sx={{ borderRadius: 2, height: 38 }}>
+                            <Button variant="outlined" color="inherit" onClick={() => setIsBatchMode(false)} disabled={!!batchProgress} sx={{ borderRadius: 2, height: 38 }}>
                                 {t('admin.cancelText')}
                             </Button>
-                            <Button variant="contained" color="success" onClick={() => handleBatchAction('start')} disabled={selectedContainers.length === 0} sx={{ borderRadius: 2, height: 38 }}>
+                            <Button variant="contained" color="success" onClick={() => handleBatchAction('start')} disabled={selectedContainers.length === 0 || !!batchProgress} sx={{ borderRadius: 2, height: 38 }}>
                                 {t('admin.start')}
                             </Button>
-                            <Button variant="contained" color="warning" onClick={() => handleBatchAction('stop')} disabled={selectedContainers.length === 0} sx={{ borderRadius: 2, height: 38 }}>
+                            <Button variant="contained" color="warning" onClick={() => handleBatchAction('stop')} disabled={selectedContainers.length === 0 || !!batchProgress} sx={{ borderRadius: 2, height: 38 }}>
                                 {t('admin.stop')}
                             </Button>
-                            <Button variant="contained" color="error" onClick={() => handleBatchAction('delete')} disabled={selectedContainers.length === 0} sx={{ borderRadius: 2, height: 38 }}>
+                            <Button variant="contained" color="error" onClick={() => handleBatchAction('delete')} disabled={selectedContainers.length === 0 || !!batchProgress} sx={{ borderRadius: 2, height: 38 }}>
                                 {t('admin.deleteText')}
                             </Button>
-                            <Typography variant="body2" sx={{ ml: 1 }}>{t('admin.selected').replace('{count}', String(selectedContainers.length))}</Typography>
+                            {batchProgress ? (
+                                <Typography variant="body2" sx={{ ml: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <CircularProgress size={16} /> {batchProgress.done}/{batchProgress.total} ({batchProgress.ok} ✓)
+                                </Typography>
+                            ) : (
+                                <Typography variant="body2" sx={{ ml: 1 }}>{t('admin.selected').replace('{count}', String(selectedContainers.length))}</Typography>
+                            )}
                         </>
                     ) : (
                         <Button variant="outlined" color="inherit" onClick={() => setIsBatchMode(true)} sx={{ borderRadius: 2, height: 38, fontSize: '0.875rem', color: 'text.primary', borderColor: theme.palette.divider, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : '#fff', whiteSpace: 'nowrap' }}>
                             {t('admin.batchOps')}
                         </Button>
                     )}
-                    <IconButton onClick={fetchContainers} sx={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 2, height: 38, width: 38, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : '#fff' }}>
+                    <IconButton onClick={() => { fetchContainers(); fetchStats(); }} sx={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 2, height: 38, width: 38, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : '#fff' }}>
                         <RefreshIcon fontSize="small" />
                     </IconButton>
                     <Button variant="contained" onClick={openCreateDialog} startIcon={<AddIcon />} sx={{ borderRadius: 2, background: '#2563eb', height: 38, px: 3, fontSize: '0.875rem', whiteSpace: 'nowrap', boxShadow: 'none', '&:hover': { background: '#1d4ed8', boxShadow: 'none' } }}>
@@ -273,6 +307,20 @@ export default function Dashboard() {
                 </Box>
 
                 <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                    <TextField
+                        size="small"
+                        placeholder={t('admin.searchPlaceholder')}
+                        value={searchQuery}
+                        onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
+                        InputProps={{
+                            startAdornment: (
+                                <InputAdornment position="start">
+                                    <SearchIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+                                </InputAdornment>
+                            ),
+                        }}
+                        sx={{ width: { xs: 160, sm: 220 }, '& .MuiOutlinedInput-root': { height: 38, borderRadius: 2, fontSize: '0.875rem', bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : '#fff' } }}
+                    />
                     <Select
                         size="small"
                         value={selectedNode}
@@ -298,9 +346,9 @@ export default function Dashboard() {
 
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 3 }}>
                 {loading ? [...Array(3)].map((_, i) => <Skeleton key={i} variant="rounded" height={200} sx={{ bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', borderRadius: 3 }} />)
-                    : containers.length === 0 ? (
+                    : filteredContainers.length === 0 ? (
                         <Box sx={{ gridColumn: '1 / -1', p: 8, textAlign: 'center', borderRadius: 3, border: `1px dashed ${theme.palette.divider}`, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)' }}>
-                            <Typography color="text.secondary">{t('admin.noEnv')}</Typography>
+                            <Typography color="text.secondary">{searchQuery ? t('admin.noSearchResults') : t('admin.noEnv')}</Typography>
                         </Box>
                     ) : displayedContainers.map(c => (
                         <Box key={c.id} onClick={(e) => {
@@ -319,11 +367,14 @@ export default function Dashboard() {
                             <Box sx={{ p: 3 }}>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
                                     <Box sx={{ p: 0.5, borderRadius: 2, background: theme.palette.mode === 'dark' ? 'linear-gradient(135deg, #1e293b, #000)' : 'linear-gradient(135deg, #e0f2fe, #f0f9ff)', border: `1px solid ${theme.palette.divider}`, display: 'flex' }}>
-                                        {c.uin && c.uin !== '未登录 / Not Logged In' ? (
-                                            <Box component="img" src={`https://q1.qlogo.cn/g?b=qq&nk=${String(c.uin).replace(/\D/g, '')}&s=640`} sx={{ width: 35, height: 35, borderRadius: 1.5, bgcolor: '#fff' }} />
-                                        ) : (
-                                            <NapCatIcon fontSize="large" />
-                                        )}
+                                        {(() => {
+                                            const uin = c.uin || statsMap[c.name]?.uin;
+                                            return uin && uin !== '未登录 / Not Logged In' ? (
+                                                <Box component="img" src={`https://q1.qlogo.cn/g?b=qq&nk=${String(uin).replace(/\D/g, '')}&s=640`} sx={{ width: 35, height: 35, borderRadius: 1.5, bgcolor: '#fff' }} />
+                                            ) : (
+                                                <NapCatIcon fontSize="large" />
+                                            );
+                                        })()}
                                     </Box>
                                     {c.status === 'running' ? (
                                         <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 0.25, borderRadius: 8, bgcolor: 'rgba(16,185,129,0.1)', color: '#059669', border: '1px solid rgba(16,185,129,0.2)', fontWeight: 600, mr: isBatchMode ? 4 : 0 }}>
@@ -337,33 +388,48 @@ export default function Dashboard() {
                                 </Box>
                                 <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, color: 'text.primary' }} noWrap>{c.name}</Typography>
                                 <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>ID: {c.id}</Typography>
+                                {statsMap[c.name] && c.status === 'running' && (
+                                    <Typography variant="caption" sx={{ mt: 0.5, display: 'block', color: 'text.secondary', fontFamily: 'monospace', fontSize: '0.7rem' }}>
+                                        CPU {statsMap[c.name].cpu_percent.toFixed(1)}% · {t('admin.memory')} {statsMap[c.name].mem_usage}MB{statsMap[c.name].mem_limit > 0 ? `/${statsMap[c.name].mem_limit}MB` : ''}
+                                    </Typography>
+                                )}
                             </Box>
 
-                            {!isBatchMode && (
+                            {!isBatchMode && (() => {
+                                const isLoading = actionLoading.startsWith(c.name + ':');
+                                const loadingAction = actionLoading.split(':')[1];
+                                const btn = (action: string, icon: React.ReactNode, color: string) => (
+                                    <IconButton size="small" disabled={isLoading} onClick={(e) => handleAction(e, c.name, action, c.node_id)}
+                                        sx={{ color, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#fff', border: `1px solid ${theme.palette.divider}` }}>
+                                        {isLoading && loadingAction === action ? <CircularProgress size={16} /> : icon}
+                                    </IconButton>
+                                );
+                                return (
                                 <Box sx={{ bgcolor: theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.3)' : '#f8fafc', borderTop: `1px solid ${theme.palette.divider}`, p: 2, display: 'flex', justifyContent: 'space-between' }}>
                                     <Box sx={{ display: 'flex', gap: 1 }}>
                                         {c.status === 'running' && (
                                             <>
-                                                <IconButton size="small" onClick={(e) => handleAction(e, c.name, 'pause', c.node_id)} sx={{ color: '#f59e0b', bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#fff', border: `1px solid ${theme.palette.divider}` }}><PauseIcon fontSize="small" /></IconButton>
-                                                <IconButton size="small" onClick={(e) => handleAction(e, c.name, 'stop', c.node_id)} sx={{ color: '#ef4444', bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#fff', border: `1px solid ${theme.palette.divider}` }}><StopIcon fontSize="small" /></IconButton>
-                                                <IconButton size="small" onClick={(e) => handleAction(e, c.name, 'restart', c.node_id)} sx={{ color: '#3b82f6', bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#fff', border: `1px solid ${theme.palette.divider}` }}><RefreshIcon fontSize="small" /></IconButton>
-                                                <IconButton size="small" onClick={(e) => handleAction(e, c.name, 'kill', c.node_id)} sx={{ color: '#b91c1c', bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#fff', border: `1px solid ${theme.palette.divider}` }}><PowerSettingsNewIcon fontSize="small" /></IconButton>
+                                                {btn('pause', <PauseIcon fontSize="small" />, '#f59e0b')}
+                                                {btn('stop', <StopIcon fontSize="small" />, '#ef4444')}
+                                                {btn('restart', <RefreshIcon fontSize="small" />, '#3b82f6')}
+                                                {btn('kill', <PowerSettingsNewIcon fontSize="small" />, '#b91c1c')}
                                             </>
                                         )}
                                         {c.status === 'paused' && (
                                             <>
-                                                <IconButton size="small" onClick={(e) => handleAction(e, c.name, 'unpause', c.node_id)} sx={{ color: '#10b981', bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#fff', border: `1px solid ${theme.palette.divider}` }}><PlayArrowIcon fontSize="small" /></IconButton>
-                                                <IconButton size="small" onClick={(e) => handleAction(e, c.name, 'stop', c.node_id)} sx={{ color: '#ef4444', bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#fff', border: `1px solid ${theme.palette.divider}` }}><StopIcon fontSize="small" /></IconButton>
-                                                <IconButton size="small" onClick={(e) => handleAction(e, c.name, 'kill', c.node_id)} sx={{ color: '#b91c1c', bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#fff', border: `1px solid ${theme.palette.divider}` }}><PowerSettingsNewIcon fontSize="small" /></IconButton>
+                                                {btn('unpause', <PlayArrowIcon fontSize="small" />, '#10b981')}
+                                                {btn('stop', <StopIcon fontSize="small" />, '#ef4444')}
+                                                {btn('kill', <PowerSettingsNewIcon fontSize="small" />, '#b91c1c')}
                                             </>
                                         )}
                                         {(c.status === 'exited' || c.status === 'created' || c.status === 'dead') && (
-                                            <IconButton size="small" onClick={(e) => handleAction(e, c.name, 'start', c.node_id)} sx={{ color: '#10b981', bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#fff', border: `1px solid ${theme.palette.divider}` }}><PlayArrowIcon fontSize="small" /></IconButton>
+                                            btn('start', <PlayArrowIcon fontSize="small" />, '#10b981')
                                         )}
                                     </Box>
-                                    <IconButton size="small" onClick={(e) => handleAction(e, c.name, 'delete', c.node_id)} sx={{ color: '#ef4444', bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#fff', border: `1px solid ${theme.palette.divider}` }}><DeleteOutlineIcon fontSize="small" /></IconButton>
+                                    {btn('delete', <DeleteOutlineIcon fontSize="small" />, '#ef4444')}
                                 </Box>
-                            )}
+                                );
+                            })()}
                         </Box>
                     ))}
             </Box>

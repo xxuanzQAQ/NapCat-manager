@@ -9,6 +9,7 @@ from starlette.concurrency import run_in_threadpool
 from services.ws_manager import ws_manager
 from services.cluster_manager import cluster_manager
 from services.log import logger
+from services.docker_manager import read_login_cache
 from middleware.auth import validate_token_value
 
 router = APIRouter(tags=["websocket"])
@@ -27,6 +28,12 @@ async def ws_events(ws: WebSocket, token: str = Query(default="")):
     try:
         while True:
             containers = await run_in_threadpool(cluster_manager.list_all_containers)
+            # 附带 login 缓存中的 uin（零开销内存读取，减少前端额外请求）
+            for c in containers:
+                if c.get("status") == "running" and c.get("node_id", "local") == "local":
+                    cache = read_login_cache(c["name"])
+                    if cache.get("logged_in") and cache.get("uin"):
+                        c["uin"] = cache["uin"]
             await ws.send_json({"type": "containers", "data": containers})
             await asyncio.sleep(3)
     except WebSocketDisconnect:

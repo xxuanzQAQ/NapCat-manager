@@ -10,10 +10,12 @@ import DownloadIcon from '@mui/icons-material/Download';
 import ImageIcon from '@mui/icons-material/Image';
 import { imageApi, type DockerImage } from '../services/api';
 import { useTranslate } from '../i18n';
+import { useToast } from '../components/Toast';
 
 export default function ImageManager() {
     const theme = useTheme();
     const t = useTranslate();
+    const toast = useToast();
     const [images, setImages] = useState<DockerImage[]>([]);
     const [loading, setLoading] = useState(true);
     const [pullDialog, setPullDialog] = useState(false);
@@ -36,10 +38,11 @@ export default function ImageManager() {
         setPulling(true);
         try {
             await imageApi.pull(pullImage.trim());
+            toast.success(`${pullImage.trim()} pull ✓`);
             setPullDialog(false);
             setPullImage('');
             fetchImages();
-        } catch (e) { console.error(e); }
+        } catch (e) { toast.error(`Pull ✗: ${e}`); }
         finally { setPulling(false); }
     };
 
@@ -47,8 +50,9 @@ export default function ImageManager() {
         if (!confirm(t('imageManager.confirmDelete'))) return;
         try {
             await imageApi.delete(id, false);
+            toast.success(`${t('admin.deleteText')} ✓`);
             fetchImages();
-        } catch (e) { console.error(e); }
+        } catch (e) { toast.error(`${t('admin.deleteText')} ✗`); }
     };
 
     const formatSize = (mb: number) => mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`;

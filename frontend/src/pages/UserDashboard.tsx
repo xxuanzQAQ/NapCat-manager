@@ -78,11 +78,13 @@ export default function UserDashboard() {
         }
     };
 
+    // 单容器 QR 加载（仅用于 refreshCard 单卡刷新，保留独立请求）
     const loadQR = async (name: string, node_id = 'local') => {
         try {
             const data = await publicApi.getQR(name, node_id);
             if (data.status === 'logged_in') {
                 setQrCodes(prev => ({ ...prev, [name]: { status: 'logged_in', uin: data.uin } }));
+                fetchContainers();
             } else if (data.status === 'ok' && data.url) {
                 const url = data.type === 'file' ? data.url
                     : `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(data.url)}`;
@@ -95,13 +97,42 @@ export default function UserDashboard() {
         }
     };
 
-    // 单卡片刷新：直接读取挂载目录中的二维码文件 + 容器状态
+    // 批量获取所有容器 QR 状态（一次请求替代 N 个独立请求，60+ 实例不卡顿）
+    const loadBatchQR = async () => {
+        try {
+            const data = await publicApi.batchQR();
+            if (data.status !== 'ok' || !data.items) return;
+            let hasNewLogin = false;
+            setQrCodes(prev => {
+                const next = { ...prev };
+                for (const [name, item] of Object.entries(data.items)) {
+                    if (item.status === 'logged_in') {
+                        next[name] = { status: 'logged_in', uin: item.uin };
+                        if (!prev[name] || prev[name].status !== 'logged_in') {
+                            hasNewLogin = true;
+                        }
+                    } else if (item.status === 'ok' && item.url) {
+                        const url = item.type === 'file' ? item.url
+                            : `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(item.url)}`;
+                        next[name] = { status: 'loaded', url };
+                    } else {
+                        next[name] = { status: 'waiting' };
+                    }
+                }
+                return next;
+            });
+            // 有新登录 → 刷新容器列表以获取 uin，停止该容器的后续 QR 检查
+            if (hasNewLogin) fetchContainers();
+        } catch {
+            // 批量接口失败时静默，下次轮询重试
+        }
+    };
+
+    // 单卡片刷新：独立请求该容器的 QR + 刷新容器状态
     const refreshCard = async (name: string, node_id = 'local') => {
         setRefreshingCards(prev => ({ ...prev, [name]: true }));
         try {
-            // 直接获取二维码（后端优先读本地文件，零阻塞）
             await loadQR(name, node_id);
-            // 同步刷新容器列表
             await fetchContainers();
         } finally {
             setRefreshingCards(prev => ({ ...prev, [name]: false }));
@@ -122,13 +153,11 @@ export default function UserDashboard() {
     }, []);
 
     useEffect(() => {
-        // 只为运行中且未确认登录的容器请求 QR 状态
+        // 有未登录的运行中容器 → 批量轮询 QR 状态（5s，单次请求覆盖所有容器）
         const needQR = containers.filter(c => c.status === 'running' && !c.uin);
-        needQR.forEach(c => loadQR(c.name, c.node_id));
-        const interval = setInterval(() => {
-            const pending = containers.filter(c => c.status === 'running' && !c.uin);
-            pending.forEach(c => loadQR(c.name, c.node_id));
-        }, 15000);
+        if (needQR.length === 0) return;
+        loadBatchQR();
+        const interval = setInterval(loadBatchQR, 5000);
         return () => clearInterval(interval);
     }, [containers]);
 

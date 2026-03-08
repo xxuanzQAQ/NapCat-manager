@@ -63,19 +63,20 @@ def _safe_path(base: str, *parts: str) -> str:
 async def api_public_containers():
     """公开容器列表 - 返回基本状态与登录信息，不需要认证。
 
-    对运行中的本地容器触发登录检测（有 15s 缓存保护，大部分请求秒回）。
-    首次调用或缓存过期时最坏约 2.5s（已压缩 timeout），可接受。
+    对运行中的本地容器并行批量触发登录检测（线程池并行 + 整体 6s 超时）。
     """
-    import asyncio
     containers = await run_in_threadpool(cluster_manager.list_all_containers)
 
-    # 对运行中的本地容器并行触发登录检测（带缓存，大部分秒回）
-    running_local = [c for c in containers if c["status"] == "running" and c.get("node_id", "local") == "local"]
-    if running_local:
-        await asyncio.gather(*[
-            run_in_threadpool(docker_manager.check_login_status, c["name"])
-            for c in running_local
-        ])
+    # 批量并行检测运行中本地容器的登录状态
+    running_local_names = [
+        c["name"] for c in containers
+        if c["status"] == "running" and c.get("node_id", "local") == "local"
+    ]
+    if running_local_names:
+        try:
+            await run_in_threadpool(docker_manager.batch_check_login, running_local_names, 6.0)
+        except Exception:
+            logger.warning("公开容器列表：批量登录检测异常")
 
     result = []
     for c in containers:
@@ -91,6 +92,81 @@ async def api_public_containers():
             item["uin"] = cached["uin"]
         result.append(item)
     return {"status": "ok", "containers": result}
+
+
+@router.get("/public/qr/batch")
+async def api_batch_qr_status():
+    """批量获取所有未登录容器的 QR 状态（用户面板专用）。
+
+    一次请求返回所有容器状态，替代前端 N 个独立 /qrcode 请求。
+    已登录容器：从缓存直接返回 logged_in + uin。
+    未登录容器：并行读取本地 qrcode.png 文件。
+    全部操作在线程池内并行执行，单核弱但多线程场景下性能最优。
+    """
+    import time as _time
+    containers = await run_in_threadpool(cluster_manager.list_all_containers)
+    running = [c for c in containers if c["status"] == "running"]
+
+    if not running:
+        return {"status": "ok", "items": {}}
+
+    # 先批量检测登录状态（并行，利用缓存）
+    running_local_names = [
+        c["name"] for c in running if c.get("node_id", "local") == "local"
+    ]
+    if running_local_names:
+        await run_in_threadpool(docker_manager.batch_check_login, running_local_names, 6.0)
+
+    def resolve_one(c: dict) -> tuple:
+        """单容器 QR 解析（在线程池中执行）"""
+        name = c["name"]
+        node_id = c.get("node_id", "local")
+
+        # 已登录 → 直接返回
+        cached = read_login_cache(name)
+        if cached.get("logged_in"):
+            return name, {"status": "logged_in", "uin": cached.get("uin", "")}
+
+        # 远程节点
+        if node_id != "local":
+            try:
+                result = cluster_manager.get_qr_status(node_id, name)
+                if result:
+                    return name, result
+            except Exception:
+                pass
+            return name, {"status": "waiting"}
+
+        # 本地：读 qrcode.png
+        try:
+            qr_path = os.path.join(get_data_dir(), name, "cache", "qrcode.png")
+            if os.path.exists(qr_path):
+                age = _time.time() - os.path.getmtime(qr_path)
+                if age < 120:
+                    with open(qr_path, "rb") as f:
+                        data = base64.b64encode(f.read()).decode("utf-8")
+                    return name, {"status": "ok", "url": f"data:image/png;base64,{data}", "type": "file"}
+        except Exception:
+            pass
+
+        return name, {"status": "waiting"}
+
+    # 并行解析所有容器的 QR 状态
+    import asyncio
+    tasks = [run_in_threadpool(resolve_one, c) for c in running]
+    try:
+        results = await asyncio.wait_for(
+            asyncio.gather(*tasks, return_exceptions=True),
+            timeout=8.0,
+        )
+    except asyncio.TimeoutError:
+        results = []
+
+    items = {}
+    for r in results:
+        if isinstance(r, tuple):
+            items[r[0]] = r[1]
+    return {"status": "ok", "items": items}
 
 
 # ============ 容器列表 ============
@@ -238,6 +314,43 @@ async def api_container_action(
 
 # ============ 容器统计 ============
 
+@router.get("/containers/stats/batch")
+async def get_batch_stats(session: dict = Depends(get_current_user)):
+    """批量获取所有容器的统计信息，后端并行+超时隔离。
+
+    替代前端逐一请求 /containers/{name}/stats 的模式，
+    单个容器超时不影响其他容器的数据返回。
+    """
+    import asyncio
+    containers = await run_in_threadpool(cluster_manager.list_all_containers)
+    running = [c for c in containers if c["status"] == "running"]
+
+    async def fetch_one(c: dict) -> tuple:
+        name = c["name"]
+        node_id = c.get("node_id", "local")
+        if not check_instance_permission(session, node_id, name):
+            return name, {}
+        try:
+            stats = await run_in_threadpool(cluster_manager.get_stats, node_id, name)
+            return name, stats
+        except Exception:
+            return name, {}
+
+    stats_map = {}
+    if running:
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*[fetch_one(c) for c in running], return_exceptions=True),
+                timeout=8.0,
+            )
+            for item in results:
+                if isinstance(item, tuple):
+                    stats_map[item[0]] = item[1]
+        except asyncio.TimeoutError:
+            logger.warning("批量 stats 整体超时（8s），部分容器可能无数据")
+    return {"status": "ok", "stats": stats_map}
+
+
 @router.get("/containers/{name}/stats")
 async def get_container_stats(
     name: str, node_id: str = "local",
@@ -287,9 +400,11 @@ async def get_qr_code(
 ):
     """二维码接口（无需认证）。
 
-    策略：文件优先，零阻塞。
-    - 登录判断仅读内存缓存（由 get_stats 自动轮询写入），绝不在此触发 API 级联
-    - NapCat 未登录时会持续输出 qrcode.png 到挂载目录，直接读取最可靠
+    策略：缓存优先 → 文件 → 主动探测 → 日志回落。
+    - 步骤 0: 读内存缓存（零阻塞）
+    - 步骤 1: 读本地 qrcode.png（文件新鲜 <120s 且 <30s → 直接返回；>30s → 主动探测登录）
+    - 步骤 2: 文件不存在/过期 → 触发 check_login_status（带 8s TTL 缓存保护）
+    - 步骤 3: 回落从 Docker 日志提取二维码 URL
     """
     import re
 
@@ -306,20 +421,36 @@ async def get_qr_code(
 
     # 1. 优先读本地挂载目录中的二维码文件（NapCat 未登录时持续输出）
     import time as _time
+    qr_file_fresh = False
     try:
         qr_path = os.path.join(get_data_dir(), name, "cache", "qrcode.png")
         if os.path.exists(qr_path):
             age = _time.time() - os.path.getmtime(qr_path)
             if age < 120:
+                qr_file_fresh = True
                 # 文件新鲜（2 分钟内更新过）→ NapCat 正在输出二维码 → 未登录
                 with open(qr_path, "rb") as f:
                     data = base64.b64encode(f.read()).decode("utf-8")
+                # 如果文件已经超过 30s 没更新，可能刚登录成功 → 主动探测一次
+                if age > 30:
+                    login = await run_in_threadpool(docker_manager.check_login_status, name)
+                    if login.get("logged_in"):
+                        return {"status": "logged_in", "uin": login.get("uin", "")}
                 return {"status": "ok", "url": f"data:image/png;base64,{data}", "type": "file"}
             # 文件已过期（超过 2 分钟未更新）→ 可能已登录，不返回旧二维码
     except Exception as e:
         logger.debug(f"读取本地二维码文件失败: {e}")
 
-    # 2. 回落：从 Docker 日志提取二维码 URL
+    # 2. 文件不存在/过期 → 主动触发登录检测（5s 轮询场景，开销可接受）
+    if not qr_file_fresh:
+        try:
+            login = await run_in_threadpool(docker_manager.check_login_status, name)
+            if login.get("logged_in"):
+                return {"status": "logged_in", "uin": login.get("uin", "")}
+        except Exception:
+            pass
+
+    # 3. 回落：从 Docker 日志提取二维码 URL
     try:
         if docker_manager.client:
             container = docker_manager.client.containers.get(name)

@@ -1,23 +1,25 @@
-import { useState, useMemo, createContext, useEffect } from 'react';
+import { useState, useMemo, createContext, useEffect, lazy, Suspense } from 'react';
 import { createTheme, ThemeProvider, CssBaseline, useMediaQuery, CircularProgress, Box } from '@mui/material';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './pages/Login';
 import SetupPage from './pages/Setup';
-import Dashboard from './pages/Dashboard';
-import UserDashboard from './pages/UserDashboard';
 import AdminLayout from './layouts/AdminLayout';
-import ConfigEditor from './pages/ConfigEditor';
-import ClusterSettings from './pages/ClusterSettings';
-import Nodes from './pages/Nodes';
-import OperationLogs from './pages/OperationLogs';
-import Users from './pages/Users';
-import ImageManager from './pages/ImageManager';
-import AlertSettings from './pages/AlertSettings';
-import BackupRestore from './pages/BackupRestore';
-import ScheduledTasks from './pages/ScheduledTasks';
 import { ToastProvider } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { setupApi } from './services/api';
+
+// 路由懒加载 — 首屏只加载 Login/Setup/AdminLayout
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const UserDashboard = lazy(() => import('./pages/UserDashboard'));
+const ConfigEditor = lazy(() => import('./pages/ConfigEditor'));
+const ClusterSettings = lazy(() => import('./pages/ClusterSettings'));
+const Nodes = lazy(() => import('./pages/Nodes'));
+const OperationLogs = lazy(() => import('./pages/OperationLogs'));
+const Users = lazy(() => import('./pages/Users'));
+const ImageManager = lazy(() => import('./pages/ImageManager'));
+const AlertSettings = lazy(() => import('./pages/AlertSettings'));
+const BackupRestore = lazy(() => import('./pages/BackupRestore'));
+const ScheduledTasks = lazy(() => import('./pages/ScheduledTasks'));
 
 export const ThemeModeContext = createContext({ toggleTheme: () => { } });
 export const LanguageContext = createContext({ language: 'zh', toggleLanguage: () => { } });
@@ -118,6 +120,7 @@ function App() {
           <CssBaseline />
           <ToastProvider>
             <BrowserRouter>
+              <Suspense fallback={<Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CircularProgress /></Box>}>
               <Routes>
                 {/* 首次部署：未初始化时所有路由重定向到 /setup */}
                 <Route path="/setup" element={initialized ? <Navigate to="/login" replace /> : <SetupPage />} />
@@ -137,6 +140,7 @@ function App() {
                 </Route>
                 <Route path="*" element={<Navigate to={initialized ? "/" : "/setup"} replace />} />
               </Routes>
+              </Suspense>
             </BrowserRouter>
           </ToastProvider>
         </ThemeProvider>

@@ -17,7 +17,7 @@ import services.database as db
 class ClusterManager:
     def __init__(self, config_file: str):
         self.config_file = config_file
-        self._executor = ThreadPoolExecutor(max_workers=20)
+        self._executor = ThreadPoolExecutor(max_workers=32)
 
     def init(self):
         """启动后初始化：同步 local 节点 api_key"""

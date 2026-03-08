@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useState, useContext, useCallback } from 'react';
 import { Box, Typography, IconButton, Collapse, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Drawer, useTheme } from '@mui/material';
 import { useNavigate, Outlet, useLocation } from 'react-router-dom';
 import PublicIcon from '@mui/icons-material/Public';
@@ -22,6 +22,7 @@ import ScheduleIcon from '@mui/icons-material/Schedule';
 import { ThemeModeContext, LanguageContext } from '../App';
 import { useTranslate } from '../i18n';
 import { containerApi, authApi, type Container } from '../services/api';
+import { useWebSocket } from '../hooks/useWebSocket';
 
 const drawerWidth = 280;
 
@@ -35,20 +36,35 @@ export default function AdminLayout() {
     const [containers, setContainers] = useState<Container[]>([]);
     const [openInstances, setOpenInstances] = useState(true);
 
-    const fetchContainers = async () => {
+    // WS 驱动容器列表（替代 HTTP 轮询，后端 3s 推送一次含 uin）
+    const { data: wsData, connected: wsConnected } = useWebSocket<{ type: string; data: Container[] }>({
+        path: '/ws/events',
+    });
+
+    // WS 推送到达时同步 containers state
+    useEffect(() => {
+        if (wsData?.type === 'containers' && Array.isArray(wsData.data)) {
+            setContainers(wsData.data);
+        }
+    }, [wsData]);
+
+    // 手动刷新（操作后立即反馈，不等 WS 3s 推送）
+    const refreshContainers = useCallback(async () => {
         try {
             const data = await containerApi.list();
             setContainers(data.containers || []);
         } catch (e) {
             console.error(e);
         }
-    };
-
-    useEffect(() => {
-        fetchContainers();
-        const interval = setInterval(() => { fetchContainers(); }, 5000);
-        return () => clearInterval(interval);
     }, []);
+
+    // WS 未连接时回退到 HTTP 轮询（首次加载 + 断线容灾）
+    useEffect(() => {
+        if (wsConnected) return;
+        refreshContainers();
+        const fallback = setInterval(refreshContainers, 5000);
+        return () => clearInterval(fallback);
+    }, [wsConnected, refreshContainers]);
 
     const handleLogout = async () => {
         try { await authApi.logout(); } catch { /* ignore */ }
@@ -208,7 +224,7 @@ export default function AdminLayout() {
 
             {/* Main content Area */}
             <Box component="main" sx={{ flexGrow: 1, p: 0, bgcolor: theme.palette.background.default, minHeight: '100vh', overflow: 'auto' }}>
-                <Outlet context={{ fetchContainers }} />
+                <Outlet context={{ containers, refreshContainers }} />
             </Box>
         </Box>
     );

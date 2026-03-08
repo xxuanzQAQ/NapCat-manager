@@ -13,11 +13,13 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { nodeApi, type Node } from '../services/api';
 import { useTranslate } from '../i18n';
+import { useToast } from '../components/Toast';
 import MiniChart from '../components/MiniChart';
 
 export default function Nodes() {
     const theme = useTheme();
     const t = useTranslate();
+    const toast = useToast();
     const [loading, setLoading] = useState(true);
     const [nodes, setNodes] = useState<Node[]>([]);
     const [openDialog, setOpenDialog] = useState(false);
@@ -132,9 +134,10 @@ export default function Nodes() {
         if (!window.confirm(t('admin.confirmDelete').replace('{name}', name))) return;
         try {
             await nodeApi.delete(id);
+            toast.success(`${name} ${t('admin.deleteText')} ✓`);
             fetchNodes();
         } catch (e) {
-            console.error(e);
+            toast.error(`${name} ${t('admin.deleteText')} ✗`);
         }
     };
 
@@ -142,13 +145,15 @@ export default function Nodes() {
         try {
             if (editNodeId) {
                 await nodeApi.edit(editNodeId, nodeName, nodeAddress, nodeApiKey);
+                toast.success(`${nodeName} updated ✓`);
             } else {
                 await nodeApi.add(nodeName, nodeAddress, nodeApiKey);
+                toast.success(`${nodeName} added ✓`);
             }
             setOpenDialog(false);
             fetchNodes();
         } catch (e) {
-            console.error(e);
+            toast.error(String(e));
         }
     };
 
