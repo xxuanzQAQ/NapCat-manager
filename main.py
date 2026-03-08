@@ -29,6 +29,7 @@ from routers.ws_router import router as ws_router
 from routers.alert_router import router as alert_router
 from routers.backup_router import router as backup_router
 from routers.scheduler_router import router as scheduler_router
+from routers.resource_router import router as resource_router
 
 
 # ============ 生命周期管理 ============
@@ -163,6 +164,7 @@ app.include_router(ws_router)
 app.include_router(alert_router)
 app.include_router(backup_router)
 app.include_router(scheduler_router)
+app.include_router(resource_router)
 
 
 # ============ 全局异常处理器 ============
@@ -199,6 +201,11 @@ async def health_check():
 
 if os.path.exists(os.path.join(FRONTEND_DIST, "assets")):
     app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST, "assets")), name="frontend_assets")
+
+# 本地资源目录（登录页图片、背景图等）
+RESOURCE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resource")
+if os.path.isdir(RESOURCE_DIR):
+    app.mount("/resource", StaticFiles(directory=RESOURCE_DIR), name="resource_assets")
 
 
 # ============ 使用手册 ============

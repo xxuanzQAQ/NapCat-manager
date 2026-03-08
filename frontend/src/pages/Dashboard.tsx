@@ -386,13 +386,15 @@ export default function Dashboard() {
                             )}
                             <Box sx={{ p: 3 }}>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                                    <Box sx={{ p: 0.5, borderRadius: 2, background: theme.palette.mode === 'dark' ? 'linear-gradient(135deg, #1e293b, #000)' : 'linear-gradient(135deg, #e0f2fe, #f0f9ff)', border: `1px solid ${theme.palette.divider}`, display: 'flex' }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                         {(() => {
                                             const uin = c.uin || statsMap[c.name]?.uin;
                                             return uin && uin !== '未登录 / Not Logged In' ? (
-                                                <Box component="img" src={`https://q1.qlogo.cn/g?b=qq&nk=${String(uin).replace(/\D/g, '')}&s=640`} sx={{ width: 35, height: 35, borderRadius: 1.5, bgcolor: '#fff' }} />
+                                                <Box component="img" src={`https://q1.qlogo.cn/g?b=qq&nk=${String(uin).replace(/\D/g, '')}&s=640`} sx={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
                                             ) : (
-                                                <NapCatIcon fontSize="large" />
+                                                <Box sx={{ width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                                                    <NapCatIcon sx={{ fontSize: 36 }} />
+                                                </Box>
                                             );
                                         })()}
                                     </Box>

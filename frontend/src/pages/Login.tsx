@@ -10,7 +10,6 @@ import {
     IconButton,
     useTheme,
     CircularProgress,
-    Container,
     Fade,
     InputAdornment
 } from '@mui/material';
@@ -58,20 +57,12 @@ export default function LoginPage() {
         }
     };
 
+    const FALLBACK_IMG = 'https://napneko.github.io/assets/newnewlogo.png';
+    const LOCAL_IMG = '/resource/images/login/login.png';
+
     return (
-        <Box
-            sx={{
-                minHeight: '100vh',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                bgcolor: 'background.default',
-                position: 'relative',
-                overflow: 'hidden',
-                p: 2,
-            }}
-        >
-            {/* Absolute positioned corner system for Login Page */}
+        <Box sx={{ minHeight: '100vh', display: 'flex', position: 'relative', overflow: 'hidden' }}>
+            {/* 右上角工具栏 */}
             <Box sx={{ position: 'absolute', top: 16, right: 16, display: 'flex', gap: 1, zIndex: 10 }}>
                 <IconButton onClick={toggleLanguage} size="small" aria-label="Toggle language" color="inherit">
                     <TranslateIcon fontSize="small" />
@@ -81,83 +72,90 @@ export default function LoginPage() {
                 </IconButton>
             </Box>
 
-            <Container maxWidth="lg" sx={{ display: 'flex', justifyContent: 'center', zIndex: 2 }}>
-                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%' }}>
+            {/* 左侧 - 图片覆盖 */}
+            <Box sx={{
+                flex: 1, display: { xs: 'none', md: 'flex' },
+                alignItems: 'center', justifyContent: 'center',
+                bgcolor: 'background.default',
+                position: 'relative', overflow: 'hidden',
+            }}>
+                <Box
+                    component="img"
+                    src={LOCAL_IMG}
+                    onError={(e: React.SyntheticEvent<HTMLImageElement>) => { e.currentTarget.src = FALLBACK_IMG; }}
+                    sx={{
+                        maxWidth: '70%', maxHeight: '70%',
+                        objectFit: 'contain',
+                        filter: theme.palette.mode === 'dark'
+                            ? 'drop-shadow(0px 10px 40px rgba(59,130,246,0.25))'
+                            : 'drop-shadow(0px 20px 60px rgba(59,130,246,0.2))',
+                        animation: 'float 6s ease-in-out infinite',
+                        '@keyframes float': {
+                            '0%': { transform: 'translateY(0px)' },
+                            '50%': { transform: 'translateY(-12px)' },
+                            '100%': { transform: 'translateY(0px)' }
+                        }
+                    }}
+                />
+            </Box>
 
-                    <Fade in timeout={800}>
-                        <Box sx={{ flex: 1, textAlign: 'center', display: { xs: 'none', md: 'flex' }, flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                            <Box
-                                component="img"
-                                src="https://napneko.github.io/assets/newnewlogo.png"
-                                sx={{
-                                    width: '100%',
-                                    maxWidth: 320,
-                                    height: 'auto',
-                                    mb: 4,
-                                    borderRadius: '50%',
-                                    filter: theme.palette.mode === 'dark' ? 'drop-shadow(0px 10px 30px rgba(59,130,246,0.2))' : 'drop-shadow(0px 20px 40px rgba(59,130,246,0.3))',
-                                    animation: 'float 6s ease-in-out infinite',
-                                    '@keyframes float': {
-                                        '0%': { transform: 'translateY(0px)' },
-                                        '50%': { transform: 'translateY(-15px)' },
-                                        '100%': { transform: 'translateY(0px)' }
-                                    }
-                                }}
-                            />
-                            <Typography variant="h3" sx={{ fontWeight: 800, background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.02em' }}>
-                                {t('login.agentTitle')}
-                            </Typography>
-                            <Typography variant="h6" color="text.secondary" sx={{ mt: 1, fontWeight: 500, opacity: 0.8 }}>
-                                {t('login.agentSubtitle')}
-                            </Typography>
-                        </Box>
-                    </Fade>
+            {/* 右侧 - 登录表单 */}
+            <Box sx={{
+                width: { xs: '100%', md: 480 }, minWidth: { md: 420 },
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                bgcolor: 'background.default', p: 4,
+            }}>
+                {/* 原猫图上的标题文字 */}
+                <Fade in timeout={400}>
+                    <Box sx={{ textAlign: 'center', mb: 3, maxWidth: 400, width: '100%' }}>
+                        <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5, color: 'text.primary' }}>{t('login.agentTitle')}</Typography>
+                        <Typography variant="body2" color="text.secondary">{t('login.agentSubtitle')}</Typography>
+                    </Box>
+                </Fade>
+                <Fade in timeout={500}>
+                    <Paper elevation={0} component="form" onSubmit={handleLogin} sx={{
+                        p: 4, width: '100%', maxWidth: 400,
+                        background: theme.palette.background.paper,
+                        border: `1px solid ${theme.palette.divider}`,
+                        borderRadius: '16px',
+                        boxShadow: theme.palette.mode === 'dark' ? '0 12px 40px rgba(0,0,0,0.5)' : '0 12px 40px rgba(0,0,0,0.1)',
+                    }}>
+                        <Typography variant="h5" sx={{ mb: 1, fontWeight: 600, textAlign: 'center' }}>{t('login.title')}</Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 4, textAlign: 'center' }}>{t('login.subtitle')}</Typography>
 
-                    <Fade in timeout={500}>
-                        <Paper elevation={0} component="form" onSubmit={handleLogin} sx={{
-                            p: 4, width: '100%', maxWidth: 450,
-                            background: theme.palette.background.paper,
-                            border: `1px solid ${theme.palette.divider}`,
-                            borderRadius: '16px',
-                            boxShadow: theme.palette.mode === 'dark' ? '0 12px 40px rgba(0,0,0,0.5)' : '0 12px 40px rgba(0,0,0,0.1)',
-                        }}>
-                            <Typography variant="h5" sx={{ mb: 1, fontWeight: 600, textAlign: 'center' }}>{t('login.title')}</Typography>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 4, textAlign: 'center' }}>{t('login.subtitle')}</Typography>
+                        {error && (
+                            <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
+                                {error}
+                            </Alert>
+                        )}
 
-                            {error && (
-                                <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
-                                    {error}
-                                </Alert>
-                            )}
+                        <TextField fullWidth label={t('login.username')} variant="outlined" margin="normal" value={username} onChange={e => setUsername(e.target.value)}
+                            InputProps={{
+                                startAdornment: <InputAdornment position="start"><PersonIcon color="disabled" /></InputAdornment>,
+                            }}
+                            sx={{ mb: 2 }}
+                        />
 
-                            <TextField fullWidth label={t('login.username')} variant="outlined" margin="normal" value={username} onChange={e => setUsername(e.target.value)}
-                                InputProps={{
-                                    startAdornment: <InputAdornment position="start"><PersonIcon color="disabled" /></InputAdornment>,
-                                }}
-                                sx={{ mb: 2 }}
-                            />
+                        <TextField fullWidth label={t('login.password')} type="password" variant="outlined" margin="normal" value={password} onChange={e => setPassword(e.target.value)}
+                            InputProps={{
+                                startAdornment: <InputAdornment position="start"><LockIcon color="disabled" /></InputAdornment>,
+                            }}
+                            sx={{ mb: 4 }}
+                        />
 
-                            <TextField fullWidth label={t('login.password')} type="password" variant="outlined" margin="normal" value={password} onChange={e => setPassword(e.target.value)}
-                                InputProps={{
-                                    startAdornment: <InputAdornment position="start"><LockIcon color="disabled" /></InputAdornment>,
-                                }}
-                                sx={{ mb: 4 }}
-                            />
-
-                            <Button fullWidth variant="contained" type="submit" disabled={loading}
-                                sx={{
-                                    py: 1.5,
-                                    borderRadius: '8px',
-                                    fontWeight: 600,
-                                    fontSize: '1.05rem',
-                                }}
-                            >
-                                {loading ? <CircularProgress size={24} color="inherit" /> : t('login.submit')}
-                            </Button>
-                        </Paper>
-                    </Fade>
-                </Box>
-            </Container>
+                        <Button fullWidth variant="contained" type="submit" disabled={loading}
+                            sx={{
+                                py: 1.5,
+                                borderRadius: '8px',
+                                fontWeight: 600,
+                                fontSize: '1.05rem',
+                            }}
+                        >
+                            {loading ? <CircularProgress size={24} color="inherit" /> : t('login.submit')}
+                        </Button>
+                    </Paper>
+                </Fade>
+            </Box>
         </Box>
     );
 }

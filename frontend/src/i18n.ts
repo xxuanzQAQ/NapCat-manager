@@ -226,7 +226,6 @@ export const translations = {
         },
         user: {
             title: 'NapCat 用户控制台',
-            subtitle: '本地原生管理您的 QQ 机器人节点。',
             adminLogin: '管理员登录',
             refreshStatus: '刷新状态',
             refreshing: '刷新中...',
@@ -244,7 +243,8 @@ export const translations = {
             loginRequired: '需要登录',
             loginRequiredDesc: '登录后即可查看分配给您的实例。',
             goLogin: '前往登录',
-            loadFailed: '加载失败'
+            loadFailed: '加载失败',
+            scanToLogin: '请使用手机 QQ 扫描二维码登录'
         },
         login: {
             title: '管理员登录',
@@ -646,7 +646,6 @@ export const translations = {
         },
         user: {
             title: 'NapCat User Dashboard',
-            subtitle: 'Manage your QQ Bots natively.',
             adminLogin: 'ADMIN LOGIN',
             waitingQr: 'Waiting for QR code...',
             activeLogged: 'Starting or Logged In',
@@ -664,7 +663,8 @@ export const translations = {
             loginRequired: 'Login Required',
             loginRequiredDesc: 'Please log in to view your assigned instances.',
             goLogin: 'Go to Login',
-            loadFailed: 'Load failed'
+            loadFailed: 'Load failed',
+            scanToLogin: 'Scan this QR code with mobile QQ to login'
         },
         login: {
             title: 'Admin Login',

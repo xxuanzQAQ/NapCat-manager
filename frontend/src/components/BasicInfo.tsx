@@ -306,7 +306,7 @@ export const BasicInfo = ({ name, node_id }: BasicInfoProps) => {
                         <CardContent sx={{ p: 3 }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
                                 <Box sx={{ p: 1, borderRadius: 2, bgcolor: 'rgba(59,130,246,0.1)', mr: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40 }}>
-                                    <Box component="img" src={avatarUrl} sx={{ width: 24, height: 24, borderRadius: '50%', bgcolor: '#fff' }} />
+                                    <Box component="img" src={avatarUrl} sx={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover' }} />
                                 </Box>
                                 <Typography variant="h6" sx={{ fontWeight: 700 }}>{t('basicInfo.infoTitle')}</Typography>
                             </Box>

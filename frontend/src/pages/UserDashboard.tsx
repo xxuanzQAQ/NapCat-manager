@@ -2,7 +2,7 @@ import { useEffect, useState, useContext } from 'react';
 import {
     Box, Typography, CircularProgress,
     Button, IconButton, useTheme, Skeleton, Pagination,
-    TextField, InputAdornment
+    TextField, InputAdornment, Dialog, DialogContent
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -11,7 +11,6 @@ import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import TranslateIcon from '@mui/icons-material/Translate';
-import SmartToyIcon from '@mui/icons-material/SmartToy';
 import SearchIcon from '@mui/icons-material/Search';
 import { ThemeModeContext, LanguageContext } from '../App';
 import { useTranslate } from '../i18n';
@@ -37,6 +36,50 @@ export default function UserDashboard() {
     const [qrCodes, setQrCodes] = useState<Record<string, QRState>>({});
     const [searchQuery, setSearchQuery] = useState('');
     const [refreshingCards, setRefreshingCards] = useState<Record<string, boolean>>({});
+    const [bgUrl, setBgUrl] = useState('');
+    const [qrDialogName, setQrDialogName] = useState<string | null>(null);
+
+    // QQ号遮蔽：385***633
+    const maskUin = (uin: string) => {
+        const digits = uin.replace(/\D/g, '');
+        if (digits.length <= 4) return digits;
+        return digits.slice(0, 3) + '***' + digits.slice(-3);
+    };
+
+    // 加载背景壁纸：根据窗口方向选择横图/竖图
+    useEffect(() => {
+        let cancelled = false;
+        // 每个方向只随机选一次，resize 时仅切换方向不重新随机
+        let picked: { landscape: string; portrait: string } | null = null;
+
+        const pick = (list: string[]) => list.length ? list[Math.floor(Math.random() * list.length)] : '';
+
+        const applyOrientation = () => {
+            if (!picked) return;
+            const isLandscape = window.innerWidth >= window.innerHeight;
+            const url = isLandscape
+                ? (picked.landscape || picked.portrait)
+                : (picked.portrait || picked.landscape);
+            if (url) setBgUrl(url);
+        };
+
+        (async () => {
+            try {
+                const res = await fetch('/api/resource/wallpapers?category=user-dashboard');
+                const json = await res.json();
+                if (cancelled || json.status !== 'ok') return;
+                picked = {
+                    landscape: pick(json.landscape || []),
+                    portrait: pick(json.portrait || []),
+                };
+                applyOrientation();
+            } catch { /* ignore */ }
+        })();
+
+        const onResize = () => applyOrientation();
+        window.addEventListener('resize', onResize);
+        return () => { cancelled = true; window.removeEventListener('resize', onResize); };
+    }, []);
 
     const [page, setPage] = useState(1);
     const rowsPerPage = 12;
@@ -174,9 +217,18 @@ export default function UserDashboard() {
 
     return (
         <Box sx={{
-            p: { xs: 2, md: 4, lg: 6 }, minHeight: '100vh', bgcolor: 'background.default'
+            p: { xs: 2, md: 4, lg: 6 }, minHeight: '100vh',
+            bgcolor: 'background.default',
+            position: 'relative',
+            '&::before': bgUrl ? {
+                content: '""', position: 'fixed', inset: 0, zIndex: 0,
+                backgroundImage: `url(${bgUrl})`,
+                backgroundSize: 'cover', backgroundPosition: 'center',
+                opacity: theme.palette.mode === 'dark' ? 0.15 : 0.2,
+                pointerEvents: 'none',
+            } : {},
         }}>
-            <Box sx={{ maxWidth: 1100, mx: 'auto' }}>
+            <Box sx={{ maxWidth: 1100, mx: 'auto', position: 'relative', zIndex: 1 }}>
 
                 {/* Header */}
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -225,8 +277,8 @@ export default function UserDashboard() {
                 </Box>
 
                 {/* Cards */}
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 2 }}>
-                    {loading ? [...Array(4)].map((_, i) => <Skeleton key={i} variant="rounded" height={200} sx={{ borderRadius: 3, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.6)' }} />)
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 2 }}>
+                    {loading ? [...Array(4)].map((_, i) => <Skeleton key={i} variant="rounded" height={120} sx={{ borderRadius: 3, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.6)' }} />)
                         : filteredContainers.length === 0 ? (
                             <Box sx={{ gridColumn: '1 / -1', py: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', borderRadius: 3, border: `1px solid ${theme.palette.divider}` }}>
                                 <CloudOffIcon sx={{ fontSize: 48, color: '#94a3b8', mb: 1.5 }} />
@@ -236,58 +288,82 @@ export default function UserDashboard() {
                         ) : displayedContainers.map(c => {
                             const qr = qrCodes[c.name] || { status: 'loading' };
                             const isRefreshing = refreshingCards[c.name] || false;
+                            const uinDigits = qr.uin ? String(qr.uin).replace(/\D/g, '') : '';
                             return (
                                 <Box key={c.id} sx={{
-                                    background: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.04)' : '#fff',
+                                    background: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.65)',
+                                    backdropFilter: 'blur(12px)',
                                     borderRadius: 3, border: `1px solid ${theme.palette.divider}`,
-                                    p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center',
-                                    transition: 'all 0.2s',
+                                    p: 2, display: 'flex', flexDirection: 'row', alignItems: 'stretch',
+                                    transition: 'all 0.2s', gap: 1.5,
                                     '&:hover': { borderColor: theme.palette.primary.main, boxShadow: `0 0 0 1px ${theme.palette.primary.main}22` }
                                 }}>
-                                    {/* QR / Status */}
-                                    <Box sx={{ width: 120, height: 120, borderRadius: 2, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: theme.palette.mode === 'dark' ? '#1e293b' : '#f8fafc', mb: 1.5 }}>
+                                    {/* 左侧 - 信息区 */}
+                                    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                                        {/* 容器名（居中，最多两行自动换行） */}
+                                        <Typography variant="subtitle2" sx={{
+                                            fontWeight: 700, textAlign: 'center', fontSize: '0.88rem',
+                                            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                                            overflow: 'hidden', textOverflow: 'ellipsis',
+                                            wordBreak: 'break-all', lineHeight: 1.35, minHeight: '2.4em',
+                                        }}>{highlight(c.name)}</Typography>
+                                        {/* 头像 + QQ号（仅已登录才显示，居中） */}
+                                        {qr.status === 'logged_in' && uinDigits && (
+                                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mt: 1, gap: 0.5 }}>
+                                                <Box component="img"
+                                                    src={`https://q1.qlogo.cn/g?b=qq&nk=${uinDigits}&s=640`}
+                                                    sx={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }}
+                                                />
+                                                <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.72rem' }}>
+                                                    QQ: {maskUin(uinDigits)}
+                                                </Typography>
+                                            </Box>
+                                        )}
+                                        {/* 底部：状态 + 刷新按钮，两端对齐 */}
+                                        <Box sx={{ mt: 'auto', pt: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                            {c.status === 'running' ? (
+                                                <Typography variant="caption" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.4, color: '#059669', fontWeight: 600, fontSize: '0.7rem' }}>
+                                                    <Box sx={{ width: 5, height: 5, bgcolor: '#10b981', borderRadius: '50%' }} /> {t('admin.online')}
+                                                </Typography>
+                                            ) : (
+                                                <Typography variant="caption" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.4, color: 'text.secondary', fontWeight: 600, fontSize: '0.7rem' }}>
+                                                    <Box sx={{ width: 5, height: 5, bgcolor: '#94a3b8', borderRadius: '50%' }} /> {c.status.toUpperCase()}
+                                                </Typography>
+                                            )}
+                                            <IconButton
+                                                size="small"
+                                                disabled={isRefreshing}
+                                                onClick={() => refreshCard(c.name, c.node_id)}
+                                                sx={{ color: 'text.secondary', p: 0.5 }}
+                                            >
+                                                {isRefreshing ? <CircularProgress size={14} /> : <RefreshIcon sx={{ fontSize: 16 }} />}
+                                            </IconButton>
+                                        </Box>
+                                    </Box>
+                                    {/* 右侧 - QR / 状态区 */}
+                                    <Box
+                                        onClick={() => qr.status === 'loaded' ? setQrDialogName(c.name) : undefined}
+                                        sx={{
+                                            width: 140, minHeight: 140, borderRadius: 2, overflow: 'hidden',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                                            bgcolor: theme.palette.mode === 'dark' ? '#1e293b' : '#f8fafc',
+                                            cursor: qr.status === 'loaded' ? 'pointer' : 'default',
+                                            transition: 'transform 0.15s',
+                                            '&:hover': qr.status === 'loaded' ? { transform: 'scale(1.04)' } : {},
+                                        }}
+                                    >
                                         {c.status !== 'running' ? (
-                                            <CloudOffIcon sx={{ color: '#94a3b8', fontSize: 36 }} />
+                                            <CloudOffIcon sx={{ color: '#94a3b8', fontSize: 32 }} />
                                         ) : qr.status === 'loaded' ? (
                                             <img src={qr.url} alt="QR" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                         ) : qr.status === 'logged_in' ? (
-                                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                                <Box component="img" src={qr.uin ? `https://q1.qlogo.cn/g?b=qq&nk=${String(qr.uin).replace(/\D/g, '')}&s=640` : "https://napneko.github.io/assets/newnewlogo.png"} sx={{ width: 40, height: 40, borderRadius: '50%', mb: 0.5, border: '2px solid #10b981', bgcolor: '#fff' }} />
-                                                <Typography variant="caption" sx={{ color: '#059669', fontWeight: 600, fontSize: '0.7rem' }}>{t('user.loggedIn')}</Typography>
-                                            </Box>
+                                            <Typography variant="caption" sx={{ color: '#059669', fontWeight: 600, fontSize: '0.7rem' }}>{t('user.loggedIn')}</Typography>
                                         ) : qr.status === 'waiting' || qr.status === 'loading' ? (
-                                            <CircularProgress size={28} sx={{ color: '#94a3b8' }} />
+                                            <CircularProgress size={24} sx={{ color: '#94a3b8' }} />
                                         ) : (
                                             <Typography variant="caption" color="error" sx={{ fontSize: '0.7rem' }}>{t('user.loadFailed')}</Typography>
                                         )}
                                     </Box>
-
-                                    {/* Name + Status */}
-                                    <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5, textAlign: 'center', width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{highlight(c.name)}</Typography>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-                                        {c.status === 'running' ? (
-                                            <Typography variant="caption" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.4, color: '#059669', fontWeight: 600, fontSize: '0.7rem' }}>
-                                                <Box sx={{ width: 5, height: 5, bgcolor: '#10b981', borderRadius: '50%' }} /> {t('admin.online')}
-                                            </Typography>
-                                        ) : (
-                                            <Typography variant="caption" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.4, color: 'text.secondary', fontWeight: 600, fontSize: '0.7rem' }}>
-                                                <Box sx={{ width: 5, height: 5, bgcolor: '#94a3b8', borderRadius: '50%' }} /> {c.status.toUpperCase()}
-                                            </Typography>
-                                        )}
-                                    </Box>
-                                    {qr.status === 'logged_in' && qr.uin && (
-                                        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>QQ: {String(qr.uin).replace(/\D/g, '')}</Typography>
-                                    )}
-
-                                    {/* Refresh */}
-                                    <IconButton
-                                        size="small"
-                                        disabled={isRefreshing}
-                                        onClick={() => refreshCard(c.name, c.node_id)}
-                                        sx={{ mt: 0.5, color: 'text.secondary' }}
-                                    >
-                                        {isRefreshing ? <CircularProgress size={14} /> : <RefreshIcon sx={{ fontSize: 16 }} />}
-                                    </IconButton>
                                 </Box>
                             );
                         })}
@@ -306,6 +382,45 @@ export default function UserDashboard() {
                 )}
 
             </Box>
+
+            {/* QR 放大弹窗 */}
+            <Dialog
+                open={!!qrDialogName}
+                onClose={() => setQrDialogName(null)}
+                maxWidth="xs"
+                fullWidth
+                PaperProps={{
+                    sx: {
+                        borderRadius: 4, backgroundImage: 'none',
+                        bgcolor: theme.palette.mode === 'dark' ? '#1e1e1e' : '#fff',
+                    }
+                }}
+            >
+                <DialogContent sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', p: 4 }}>
+                    {qrDialogName && (() => {
+                        const qr = qrCodes[qrDialogName];
+                        const container = containers.find(c => c.name === qrDialogName);
+                        if (!qr || qr.status !== 'loaded') return null;
+                        return (
+                            <>
+                                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, textAlign: 'center' }}>
+                                    {container?.name || qrDialogName}
+                                </Typography>
+                                <Box sx={{
+                                    width: 280, height: 280, borderRadius: 3, overflow: 'hidden',
+                                    bgcolor: '#fff', p: 1, border: `1px solid ${theme.palette.divider}`,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                }}>
+                                    <img src={qr.url} alt="QR Code" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                </Box>
+                                <Typography variant="body2" color="text.secondary" sx={{ mt: 2, textAlign: 'center' }}>
+                                    {t('user.scanToLogin')}
+                                </Typography>
+                            </>
+                        );
+                    })()}
+                </DialogContent>
+            </Dialog>
         </Box>
     );
 }
