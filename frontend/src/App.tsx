@@ -123,20 +123,20 @@ function App() {
               <Suspense fallback={<Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CircularProgress /></Box>}>
               <Routes>
                 {/* 首次部署：未初始化时所有路由重定向到 /setup */}
-                <Route path="/setup" element={initialized ? <Navigate to="/login" replace /> : <SetupPage />} />
-                <Route path="/" element={initialized ? <UserDashboard /> : <Navigate to="/setup" replace />} />
-                <Route path="/login" element={initialized ? <LoginPage /> : <Navigate to="/setup" replace />} />
+                <Route path="/setup" element={initialized ? <Navigate to="/login" replace /> : <ErrorBoundary><SetupPage /></ErrorBoundary>} />
+                <Route path="/" element={initialized ? <ErrorBoundary><UserDashboard /></ErrorBoundary> : <Navigate to="/setup" replace />} />
+                <Route path="/login" element={initialized ? <ErrorBoundary><LoginPage /></ErrorBoundary> : <Navigate to="/setup" replace />} />
                 <Route path="/admin" element={initialized ? <AdminLayout /> : <Navigate to="/setup" replace />}>
-                  <Route index element={<Dashboard />} />
-                  <Route path="config/:node_id/:name" element={<ConfigEditor />} />
-                  <Route path="cluster-settings" element={<ClusterSettings />} />
-                  <Route path="nodes" element={<Nodes />} />
-                  <Route path="users" element={<Users />} />
-                  <Route path="images" element={<ImageManager />} />
-                  <Route path="alerts" element={<AlertSettings />} />
-                  <Route path="backup" element={<BackupRestore />} />
-                  <Route path="scheduler" element={<ScheduledTasks />} />
-                  <Route path="operation-logs" element={<OperationLogs />} />
+                  <Route index element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+                  <Route path="config/:node_id/:name" element={<ErrorBoundary><ConfigEditor /></ErrorBoundary>} />
+                  <Route path="cluster-settings" element={<ErrorBoundary><ClusterSettings /></ErrorBoundary>} />
+                  <Route path="nodes" element={<ErrorBoundary><Nodes /></ErrorBoundary>} />
+                  <Route path="users" element={<ErrorBoundary><Users /></ErrorBoundary>} />
+                  <Route path="images" element={<ErrorBoundary><ImageManager /></ErrorBoundary>} />
+                  <Route path="alerts" element={<ErrorBoundary><AlertSettings /></ErrorBoundary>} />
+                  <Route path="backup" element={<ErrorBoundary><BackupRestore /></ErrorBoundary>} />
+                  <Route path="scheduler" element={<ErrorBoundary><ScheduledTasks /></ErrorBoundary>} />
+                  <Route path="operation-logs" element={<ErrorBoundary><OperationLogs /></ErrorBoundary>} />
                 </Route>
                 <Route path="*" element={<Navigate to={initialized ? "/" : "/setup"} replace />} />
               </Routes>

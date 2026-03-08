@@ -114,7 +114,7 @@ export default function LoginPage() {
                     </Fade>
 
                     <Fade in timeout={500}>
-                        <Paper elevation={0} sx={{
+                        <Paper elevation={0} component="form" onSubmit={handleLogin} sx={{
                             p: 4, width: '100%', maxWidth: 450,
                             background: theme.palette.background.paper,
                             border: `1px solid ${theme.palette.divider}`,
@@ -144,7 +144,7 @@ export default function LoginPage() {
                                 sx={{ mb: 4 }}
                             />
 
-                            <Button fullWidth variant="contained" onClick={handleLogin} disabled={loading}
+                            <Button fullWidth variant="contained" type="submit" disabled={loading}
                                 sx={{
                                     py: 1.5,
                                     borderRadius: '8px',

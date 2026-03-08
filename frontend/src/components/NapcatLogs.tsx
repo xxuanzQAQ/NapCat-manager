@@ -57,12 +57,12 @@ export const NapcatLogs = ({ name, node_id }: NapcatLogsProps) => {
     useEffect(() => {
         fetchLogs();
         let interval: NodeJS.Timeout;
-        if (autoRefresh) {
-            interval = setInterval(fetchLogs, 3000);
-        }
-        return () => {
-            if (interval) clearInterval(interval);
-        };
+        const start = () => { if (autoRefresh) interval = setInterval(fetchLogs, 3000); };
+        const stop = () => { if (interval) clearInterval(interval); };
+        const onVis = () => { document.hidden ? stop() : start(); };
+        if (!document.hidden) start();
+        document.addEventListener('visibilitychange', onVis);
+        return () => { stop(); document.removeEventListener('visibilitychange', onVis); };
     }, [name, node_id, lines, autoRefresh]);
 
     return (

@@ -323,10 +323,10 @@ class DockerManager:
         except (urllib.error.URLError, json.JSONDecodeError, OSError, ValueError):
             pass
 
-        # Network endpoints — 从宿主机本地文件读取
+        # Network endpoints — 从宿主机本地 onebot11_{uin}.json 文件读取
         if info["uin"] != "未登录 / Not Logged In":
             try:
-                cfg_path = os.path.join(get_data_dir(), name, "config", f"napcat_{info['uin']}.json")
+                cfg_path = os.path.join(get_data_dir(), name, "config", f"onebot11_{info['uin']}.json")
                 if os.path.exists(cfg_path):
                     with open(cfg_path, "r", encoding="utf-8") as f:
                         uin_config = json.loads(f.read())
@@ -445,7 +445,7 @@ class DockerManager:
         三重验证（全部满足才确认已登录）：
         1. public/info 正常返回 → NapCat 在运行
         2. qrcode.png 停止刷新（mtime > 30s）→ 不在输出二维码
-        3. napcat_{uin}.json 存在 → 可提取 uin
+        3. onebot11_{uin}.json 或 napcat_{uin}.json 存在 → 可提取 uin
 
         单一否决：
         - /api/qrcode 返回包含 url 的有效数据 → 确认未登录
@@ -514,7 +514,7 @@ class DockerManager:
             except OSError:
                 pass
 
-            # 检查 4：napcat_{uin}.json 存在 → 可提取 uin
+            # 检查 4：onebot11_{uin}.json / napcat_{uin}.json 存在 → 可提取 uin
             uin = self._get_uin_from_config(name)
 
             # 三重验证：NapCat 在运行 + 二维码停止刷新 + 有 uin
@@ -531,14 +531,28 @@ class DockerManager:
         return {"logged_in": False}
 
     def _get_uin_from_config(self, name: str) -> str:
-        """从本地 napcat_*.json 文件名提取 uin（辅助信息，不用于登录判断）"""
+        """从本地 onebot11_*.json 文件名提取 uin（辅助信息，不用于登录判断）"""
         try:
             config_dir = os.path.join(get_data_dir(), name, "config")
             if not os.path.exists(config_dir):
                 return ""
+            # 优先匹配 onebot11_{uin}.json（最可靠）
+            ob_files = [
+                f for f in os.listdir(config_dir)
+                if f.startswith("onebot11_") and f.endswith(".json")
+            ]
+            if ob_files:
+                latest = max(
+                    ob_files,
+                    key=lambda f: os.path.getmtime(os.path.join(config_dir, f)),
+                )
+                raw = latest.replace("onebot11_", "").replace(".json", "")
+                return _normalize_uin(raw)
+            # 回退：napcat_{uin}.json（排除 napcat_protocol_*）
             napcat_files = [
                 f for f in os.listdir(config_dir)
                 if f.startswith("napcat_") and f.endswith(".json")
+                and not f.startswith("napcat_protocol_")
             ]
             if napcat_files:
                 latest = max(

@@ -8,7 +8,6 @@ import {
     Grid, IconButton, Divider, Card, CardContent, useTheme,
     Dialog, DialogTitle, DialogContent, DialogActions, Select, MenuItem, InputLabel, FormControl
 } from '@mui/material';
-import SaveIcon from '@mui/icons-material/Save';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -19,7 +18,6 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SensorsIcon from '@mui/icons-material/Sensors';
-import RouterIcon from '@mui/icons-material/Router';
 import { useTranslate } from '../i18n';
 import { containerApi } from '../services/api';
 import { useToast } from './Toast';
@@ -38,6 +36,7 @@ interface EndpointConfig {
     [key: string]: unknown;
 }
 
+// 前端内部使用的扁平化网络配置
 interface NapcatNetworkConfig {
     http?: EndpointConfig[];
     http_client?: EndpointConfig[];
@@ -55,9 +54,46 @@ interface EditDialogState {
     data: EndpointConfig;
 }
 
+// NapCat onebot11_{uin}.json 中的字段名 ↔ 前端内部类型名映射
+const NAPCAT_TO_UI: Record<string, string> = {
+    httpServers: 'http',
+    httpClients: 'http_client',
+    httpSseServers: 'http_sse',
+    websocketServers: 'ws',
+    websocketClients: 'ws_client',
+};
+const UI_TO_NAPCAT: Record<string, string> = Object.fromEntries(
+    Object.entries(NAPCAT_TO_UI).map(([k, v]) => [v, k])
+);
+
+/** 从 onebot11 文件的 network 对象转换为前端扁平格式 */
+function parseNetworkToUI(network: Record<string, unknown>): NapcatNetworkConfig {
+    const result: NapcatNetworkConfig = {};
+    for (const [napcatKey, uiKey] of Object.entries(NAPCAT_TO_UI)) {
+        const arr = network[napcatKey];
+        if (Array.isArray(arr) && arr.length > 0) {
+            result[uiKey] = arr as EndpointConfig[];
+        }
+    }
+    return result;
+}
+
+/** 将前端扁平格式转换回 onebot11 文件的 network 对象 */
+function serializeUIToNetwork(config: NapcatNetworkConfig): Record<string, unknown> {
+    const network: Record<string, unknown> = {};
+    for (const [uiKey, napcatKey] of Object.entries(UI_TO_NAPCAT)) {
+        network[napcatKey] = config[uiKey] || [];
+    }
+    return network;
+}
+
 export const NetworkConfig = ({ name, node_id }: NetworkConfigProps) => {
     const [config, setConfig] = useState<NapcatNetworkConfig | null>(null);
     const [loading, setLoading] = useState(false);
+    // 保存完整的 onebot11 文件内容（含 musicSignUrl 等非网络字段）和文件名
+    const [ob11FileName, setOb11FileName] = useState<string>('');
+    const [ob11Extra, setOb11Extra] = useState<Record<string, unknown>>({});
+    const [noConfigFile, setNoConfigFile] = useState(false);
     const t = useTranslate();
     const theme = useTheme();
     const toast = useToast();
@@ -66,43 +102,73 @@ export const NetworkConfig = ({ name, node_id }: NetworkConfigProps) => {
         loadConfig();
     }, [name, node_id]);
 
-    const loadConfig = async () => {
+    /** 查找 onebot11_{uin}.json 文件名 */
+    const findOb11File = async (): Promise<string> => {
         try {
-            const data = await containerApi.getConfig(name, 'config/napcat.json', node_id);
+            const filesData = await containerApi.listFiles(name, 'config', node_id);
+            if (filesData.status === 'ok' && filesData.files) {
+                const ob11File = filesData.files
+                    .map((f: { name: string }) => f.name)
+                    .filter((n: string) => n.startsWith('onebot11_') && n.endsWith('.json'))
+                    .sort()
+                    .pop();
+                if (ob11File) return ob11File;
+            }
+        } catch (error) {
+            console.error('Failed to list config files:', error);
+        }
+        return '';
+    };
+
+    const loadConfig = async () => {
+        setNoConfigFile(false);
+        try {
+            const fileName = await findOb11File();
+            if (!fileName) {
+                setNoConfigFile(true);
+                setConfig({ http: [], http_client: [], http_sse: [], ws: [], ws_client: [] });
+                return;
+            }
+            setOb11FileName(fileName);
+            const data = await containerApi.getConfig(name, `config/${fileName}`, node_id);
             if (data.status === 'ok' && data.content) {
-                setConfig(JSON.parse(data.content));
+                const fullJson = JSON.parse(data.content);
+                const network = fullJson.network || {};
+                // 保留非 network 字段（musicSignUrl, enableLocalFile2Url 等）
+                const { network: _net, ...extra } = fullJson;
+                setOb11Extra(extra);
+                setConfig(parseNetworkToUI(network));
+            } else {
+                setNoConfigFile(true);
+                setConfig({ http: [], http_client: [], http_sse: [], ws: [], ws_client: [] });
             }
         } catch (error) {
             console.error('Failed to load config:', error);
-        }
-    };
-
-    const saveConfig = async () => {
-        if (!config) return;
-        setLoading(true);
-        try {
-            await containerApi.saveConfig(name, 'config/napcat.json', JSON.stringify(config, null, 2), node_id);
-            toast.success(t('network.saveSuccess'));
-        } catch (error) {
-            console.error('Failed to save config:', error);
-            toast.error(t('network.saveFailed'));
-        } finally {
-            setLoading(false);
+            setNoConfigFile(true);
+            setConfig({ http: [], http_client: [], http_sse: [], ws: [], ws_client: [] });
         }
     };
 
     const [editDialog, setEditDialog] = useState<EditDialogState>({ open: false, isNew: false, type: 'http', index: -1, data: { name: '', enable: true } });
 
     const saveToServer = async (newConfig: NapcatNetworkConfig) => {
+        if (!ob11FileName) {
+            toast.error(t('network.noConfigFile'));
+            return;
+        }
         setLoading(true);
         try {
-            await containerApi.saveConfig(name, 'config/napcat.json', JSON.stringify(newConfig, null, 2), node_id);
+            // 重新组装完整的 onebot11 文件：保留原有非网络字段 + 更新 network
+            const fullJson = {
+                ...ob11Extra,
+                network: serializeUIToNetwork(newConfig),
+            };
+            await containerApi.saveConfig(name, `config/${ob11FileName}`, JSON.stringify(fullJson, null, 2), node_id);
             toast.success(t('network.saveApplied'));
             setConfig(newConfig);
         } catch (error) {
             console.error('Failed to save config:', error);
             toast.error(t('network.saveRetryFailed'));
-            // revert
             loadConfig();
         } finally {
             setLoading(false);
@@ -178,6 +244,17 @@ export const NetworkConfig = ({ name, node_id }: NetworkConfigProps) => {
         return (
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', py: 10 }}>
                 <Typography color="text.secondary">{t('network.loading')}</Typography>
+            </Box>
+        );
+    }
+
+    if (noConfigFile) {
+        return (
+            <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100%', py: 10, gap: 2 }}>
+                <Typography color="text.secondary">{t('network.notLoggedIn')}</Typography>
+                <Button startIcon={<RefreshIcon />} onClick={loadConfig} variant="outlined" sx={{ borderRadius: 2, textTransform: 'none' }}>
+                    {t('network.refresh')}
+                </Button>
             </Box>
         );
     }

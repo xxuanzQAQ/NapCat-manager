@@ -48,8 +48,8 @@ export const BasicInfo = ({ name, node_id }: BasicInfoProps) => {
             if (data.uin && data.uin !== '未登录 / Not Logged In') {
                 setShowQrcode(false);
             }
-        } catch (error) {
-            console.error('Stats fetch error:', error);
+        } catch {
+            toast.error('获取状态失败');
         } finally {
             setLoading(false);
         }
@@ -60,8 +60,8 @@ export const BasicInfo = ({ name, node_id }: BasicInfoProps) => {
         setLoading(true);
         try {
             await Promise.all([fetchStats(), fetchQrcode()]);
-        } catch (error) {
-            console.error('Refresh error:', error);
+        } catch {
+            toast.error('刷新失败');
         } finally {
             setLoading(false);
         }
@@ -85,8 +85,7 @@ export const BasicInfo = ({ name, node_id }: BasicInfoProps) => {
                 setShowQrcode(true);
                 setQrcode('');
             }
-        } catch (error) {
-            console.error('QR fetch error:', error);
+        } catch {
             // 请求失败时仍显示二维码区域（等待/加载中），避免界面无反应
             if (!stats.uin || stats.uin === '未登录 / Not Logged In') {
                 setShowQrcode(true);
@@ -132,9 +131,36 @@ export const BasicInfo = ({ name, node_id }: BasicInfoProps) => {
     useEffect(() => {
         fetchStats();
         fetchQrcode();
-        const si = setInterval(fetchStats, 15000);
-        const qi = setInterval(fetchQrcode, 15000);
-        return () => { clearInterval(si); clearInterval(qi); };
+
+        let si: ReturnType<typeof setInterval>;
+        let qi: ReturnType<typeof setInterval>;
+
+        const startPolling = () => {
+            si = setInterval(fetchStats, 15000);
+            // 已登录时不轮询 QR（节省请求）
+            if (!stats.uin || stats.uin === '未登录 / Not Logged In') {
+                qi = setInterval(fetchQrcode, 15000);
+            }
+        };
+        const stopPolling = () => {
+            clearInterval(si);
+            clearInterval(qi);
+        };
+        const handleVisibility = () => {
+            if (document.visibilityState === 'visible') {
+                fetchStats();
+                startPolling();
+            } else {
+                stopPolling();
+            }
+        };
+
+        startPolling();
+        document.addEventListener('visibilitychange', handleVisibility);
+        return () => {
+            stopPolling();
+            document.removeEventListener('visibilitychange', handleVisibility);
+        };
     }, [name, node_id]);
 
     const formatMB = (mb: number) => {

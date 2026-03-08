@@ -23,6 +23,8 @@ import { ThemeModeContext, LanguageContext } from '../App';
 import { useTranslate } from '../i18n';
 import { containerApi, authApi, type Container } from '../services/api';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { useToast } from '../components/Toast';
+import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 
 const drawerWidth = 280;
 
@@ -35,6 +37,7 @@ export default function AdminLayout() {
     const t = useTranslate();
     const [containers, setContainers] = useState<Container[]>([]);
     const [openInstances, setOpenInstances] = useState(true);
+    const toast = useToast();
 
     // WS 驱动容器列表（替代 HTTP 轮询，后端 3s 推送一次含 uin）
     const { data: wsData, connected: wsConnected } = useWebSocket<{ type: string; data: Container[] }>({
@@ -53,8 +56,8 @@ export default function AdminLayout() {
         try {
             const data = await containerApi.list();
             setContainers(data.containers || []);
-        } catch (e) {
-            console.error(e);
+        } catch {
+            toast.error('刷新容器列表失败');
         }
     }, []);
 
@@ -98,104 +101,31 @@ export default function AdminLayout() {
                 </Box>
                 <Box sx={{ flex: 1, overflowY: 'auto' }}>
                     <List component="nav" sx={{ px: 2, py: 2 }}>
-                        <ListItem disablePadding sx={{ mb: 1 }}>
-                            <ListItemButton
-                                selected={location.pathname === '/admin'}
-                                onClick={() => navigate('/admin')}
-                                sx={{ borderRadius: 2, '&.Mui-selected': { bgcolor: 'rgba(59, 130, 246, 0.15)', '&:hover': { bgcolor: 'rgba(59, 130, 246, 0.25)' } } }}
-                            >
-                                <ListItemIcon sx={{ minWidth: 40 }}><DashboardIcon sx={{ color: location.pathname === '/admin' ? '#60a5fa' : 'text.secondary' }} /></ListItemIcon>
-                                <ListItemText primary={t('admin.managedInstances')} primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: location.pathname === '/admin' ? 600 : 500, color: location.pathname === '/admin' ? '#60a5fa' : 'text.primary' }} />
-                            </ListItemButton>
-                        </ListItem>
-
-                        <ListItem disablePadding sx={{ mb: 1 }}>
-                            <ListItemButton
-                                selected={location.pathname === '/admin/cluster-settings'}
-                                onClick={() => navigate('/admin/cluster-settings')}
-                                sx={{ borderRadius: 2, '&.Mui-selected': { bgcolor: 'rgba(59, 130, 246, 0.15)', '&:hover': { bgcolor: 'rgba(59, 130, 246, 0.25)' } } }}
-                            >
-                                <ListItemIcon sx={{ minWidth: 40 }}><SettingsIcon sx={{ color: location.pathname === '/admin/cluster-settings' ? '#60a5fa' : 'text.secondary' }} /></ListItemIcon>
-                                <ListItemText primary={t('admin.instanceSettings')} primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: location.pathname === '/admin/cluster-settings' ? 600 : 500, color: location.pathname === '/admin/cluster-settings' ? '#60a5fa' : 'text.primary' }} />
-                            </ListItemButton>
-                        </ListItem>
-
-                        <ListItem disablePadding sx={{ mb: 1 }}>
-                            <ListItemButton
-                                selected={location.pathname === '/admin/nodes'}
-                                onClick={() => navigate('/admin/nodes')}
-                                sx={{ borderRadius: 2, '&.Mui-selected': { bgcolor: 'rgba(59, 130, 246, 0.15)', '&:hover': { bgcolor: 'rgba(59, 130, 246, 0.25)' } } }}
-                            >
-                                <ListItemIcon sx={{ minWidth: 40 }}><HubIcon sx={{ color: location.pathname === '/admin/nodes' ? '#60a5fa' : 'text.secondary' }} /></ListItemIcon>
-                                <ListItemText primary={t('admin.nodes')} primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: location.pathname === '/admin/nodes' ? 600 : 500, color: location.pathname === '/admin/nodes' ? '#60a5fa' : 'text.primary' }} />
-                            </ListItemButton>
-                        </ListItem>
-
-                        <ListItem disablePadding sx={{ mb: 1 }}>
-                            <ListItemButton
-                                selected={location.pathname === '/admin/users'}
-                                onClick={() => navigate('/admin/users')}
-                                sx={{ borderRadius: 2, '&.Mui-selected': { bgcolor: 'rgba(59, 130, 246, 0.15)', '&:hover': { bgcolor: 'rgba(59, 130, 246, 0.25)' } } }}
-                            >
-                                <ListItemIcon sx={{ minWidth: 40 }}><PeopleIcon sx={{ color: location.pathname === '/admin/users' ? '#60a5fa' : 'text.secondary' }} /></ListItemIcon>
-                                <ListItemText primary={t('admin.userManagement')} primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: location.pathname === '/admin/users' ? 600 : 500, color: location.pathname === '/admin/users' ? '#60a5fa' : 'text.primary' }} />
-                            </ListItemButton>
-                        </ListItem>
-
-                        <ListItem disablePadding sx={{ mb: 1 }}>
-                            <ListItemButton
-                                selected={location.pathname === '/admin/operation-logs'}
-                                onClick={() => navigate('/admin/operation-logs')}
-                                sx={{ borderRadius: 2, '&.Mui-selected': { bgcolor: 'rgba(59, 130, 246, 0.15)', '&:hover': { bgcolor: 'rgba(59, 130, 246, 0.25)' } } }}
-                            >
-                                <ListItemIcon sx={{ minWidth: 40 }}><HistoryIcon sx={{ color: location.pathname === '/admin/operation-logs' ? '#60a5fa' : 'text.secondary' }} /></ListItemIcon>
-                                <ListItemText primary={t('admin.operationLogs')} primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: location.pathname === '/admin/operation-logs' ? 600 : 500, color: location.pathname === '/admin/operation-logs' ? '#60a5fa' : 'text.primary' }} />
-                            </ListItemButton>
-                        </ListItem>
-
-                        <ListItem disablePadding sx={{ mb: 1 }}>
-                            <ListItemButton
-                                selected={location.pathname === '/admin/images'}
-                                onClick={() => navigate('/admin/images')}
-                                sx={{ borderRadius: 2, '&.Mui-selected': { bgcolor: 'rgba(59, 130, 246, 0.15)', '&:hover': { bgcolor: 'rgba(59, 130, 246, 0.25)' } } }}
-                            >
-                                <ListItemIcon sx={{ minWidth: 40 }}><ImageIcon sx={{ color: location.pathname === '/admin/images' ? '#60a5fa' : 'text.secondary' }} /></ListItemIcon>
-                                <ListItemText primary={t('admin.imageManager')} primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: location.pathname === '/admin/images' ? 600 : 500, color: location.pathname === '/admin/images' ? '#60a5fa' : 'text.primary' }} />
-                            </ListItemButton>
-                        </ListItem>
-
-                        <ListItem disablePadding sx={{ mb: 1 }}>
-                            <ListItemButton
-                                selected={location.pathname === '/admin/alerts'}
-                                onClick={() => navigate('/admin/alerts')}
-                                sx={{ borderRadius: 2, '&.Mui-selected': { bgcolor: 'rgba(59, 130, 246, 0.15)', '&:hover': { bgcolor: 'rgba(59, 130, 246, 0.25)' } } }}
-                            >
-                                <ListItemIcon sx={{ minWidth: 40 }}><NotificationsActiveIcon sx={{ color: location.pathname === '/admin/alerts' ? '#60a5fa' : 'text.secondary' }} /></ListItemIcon>
-                                <ListItemText primary={t('admin.alerts')} primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: location.pathname === '/admin/alerts' ? 600 : 500, color: location.pathname === '/admin/alerts' ? '#60a5fa' : 'text.primary' }} />
-                            </ListItemButton>
-                        </ListItem>
-
-                        <ListItem disablePadding sx={{ mb: 1 }}>
-                            <ListItemButton
-                                selected={location.pathname === '/admin/backup'}
-                                onClick={() => navigate('/admin/backup')}
-                                sx={{ borderRadius: 2, '&.Mui-selected': { bgcolor: 'rgba(59, 130, 246, 0.15)', '&:hover': { bgcolor: 'rgba(59, 130, 246, 0.25)' } } }}
-                            >
-                                <ListItemIcon sx={{ minWidth: 40 }}><BackupIcon sx={{ color: location.pathname === '/admin/backup' ? '#60a5fa' : 'text.secondary' }} /></ListItemIcon>
-                                <ListItemText primary={t('admin.backup')} primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: location.pathname === '/admin/backup' ? 600 : 500, color: location.pathname === '/admin/backup' ? '#60a5fa' : 'text.primary' }} />
-                            </ListItemButton>
-                        </ListItem>
-
-                        <ListItem disablePadding sx={{ mb: 1 }}>
-                            <ListItemButton
-                                selected={location.pathname === '/admin/scheduler'}
-                                onClick={() => navigate('/admin/scheduler')}
-                                sx={{ borderRadius: 2, '&.Mui-selected': { bgcolor: 'rgba(59, 130, 246, 0.15)', '&:hover': { bgcolor: 'rgba(59, 130, 246, 0.25)' } } }}
-                            >
-                                <ListItemIcon sx={{ minWidth: 40 }}><ScheduleIcon sx={{ color: location.pathname === '/admin/scheduler' ? '#60a5fa' : 'text.secondary' }} /></ListItemIcon>
-                                <ListItemText primary={t('admin.scheduler')} primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: location.pathname === '/admin/scheduler' ? 600 : 500, color: location.pathname === '/admin/scheduler' ? '#60a5fa' : 'text.primary' }} />
-                            </ListItemButton>
-                        </ListItem>
+                        {([
+                            { path: '/admin', icon: <DashboardIcon />, label: t('admin.managedInstances') },
+                            { path: '/admin/cluster-settings', icon: <SettingsIcon />, label: t('admin.instanceSettings') },
+                            { path: '/admin/nodes', icon: <HubIcon />, label: t('admin.nodes') },
+                            { path: '/admin/users', icon: <PeopleIcon />, label: t('admin.userManagement') },
+                            { path: '/admin/operation-logs', icon: <HistoryIcon />, label: t('admin.operationLogs') },
+                            { path: '/admin/images', icon: <ImageIcon />, label: t('admin.imageManager') },
+                            { path: '/admin/alerts', icon: <NotificationsActiveIcon />, label: t('admin.alerts') },
+                            { path: '/admin/backup', icon: <BackupIcon />, label: t('admin.backup') },
+                            { path: '/admin/scheduler', icon: <ScheduleIcon />, label: t('admin.scheduler') },
+                        ] as { path: string; icon: React.ReactNode; label: string }[]).map(item => {
+                            const isActive = location.pathname === item.path;
+                            return (
+                                <ListItem disablePadding sx={{ mb: 1 }} key={item.path}>
+                                    <ListItemButton
+                                        selected={isActive}
+                                        onClick={() => navigate(item.path)}
+                                        sx={{ borderRadius: 2, '&.Mui-selected': { bgcolor: 'rgba(59, 130, 246, 0.15)', '&:hover': { bgcolor: 'rgba(59, 130, 246, 0.25)' } } }}
+                                    >
+                                        <ListItemIcon sx={{ minWidth: 40, color: isActive ? '#60a5fa' : 'text.secondary' }}>{item.icon}</ListItemIcon>
+                                        <ListItemText primary={item.label} primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: isActive ? 600 : 500, color: isActive ? '#60a5fa' : 'text.primary' }} />
+                                    </ListItemButton>
+                                </ListItem>
+                            );
+                        })}
 
                     </List>
                 </Box>
@@ -206,7 +136,14 @@ export default function AdminLayout() {
                             <ListItemText primary={t('admin.userSpaceBoard')} primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 500, color: 'text.secondary' }} />
                         </ListItemButton>
                     </ListItem>
-                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', p: 1, pt: 0 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1, pt: 0 }}>
+                        {/* WS 连接状态指示 */}
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <FiberManualRecordIcon sx={{ fontSize: 10, color: wsConnected ? '#22c55e' : '#ef4444' }} />
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                                {wsConnected ? t('admin.wsConnected') : t('admin.wsDisconnected')}
+                            </Typography>
+                        </Box>
                         <Box>
                             <IconButton onClick={toggleLanguage} size="small" sx={{ mr: 1 }} aria-label="Toggle language">
                                 <TranslateIcon fontSize="small" />

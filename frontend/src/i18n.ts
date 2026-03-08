@@ -57,7 +57,9 @@ export const translations = {
             systemMonitor: '系统监控',
             alerts: '告警设置',
             backup: '备份恢复',
-            scheduler: '定时任务'
+            scheduler: '定时任务',
+            wsConnected: '已连接',
+            wsDisconnected: '未连接'
         },
         imageManager: {
             title: '镜像管理',
@@ -218,7 +220,9 @@ export const translations = {
             httpSseServer: 'HTTP SSE 服务器',
             wsServer: 'WebSocket 服务器',
             wsClient: 'WebSocket 客户端',
-            newEndpoint: '新建端点'
+            newEndpoint: '新建端点',
+            noConfigFile: '未找到配置文件，请先登录QQ后重试',
+            notLoggedIn: '请先在「基本信息」页面扫码登录QQ，登录后将自动生成网络配置文件。'
         },
         user: {
             title: 'NapCat 用户控制台',
@@ -473,7 +477,9 @@ export const translations = {
             systemMonitor: 'Monitor',
             alerts: 'Alerts',
             backup: 'Backup',
-            scheduler: 'Scheduler'
+            scheduler: 'Scheduler',
+            wsConnected: 'Connected',
+            wsDisconnected: 'Disconnected'
         },
         imageManager: {
             title: 'Image Manager',
@@ -634,7 +640,9 @@ export const translations = {
             httpSseServer: 'HTTP SSE Server',
             wsServer: 'WebSocket Server',
             wsClient: 'WebSocket Client',
-            newEndpoint: 'New Endpoint'
+            newEndpoint: 'New Endpoint',
+            noConfigFile: 'Config file not found. Please login QQ first.',
+            notLoggedIn: 'Please scan QR code to login QQ on the "Basic Info" tab first. Network config will be generated after login.'
         },
         user: {
             title: 'NapCat User Dashboard',

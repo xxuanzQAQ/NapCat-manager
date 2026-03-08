@@ -58,6 +58,15 @@ export default function Dashboard() {
     const totalPages = Math.ceil(filteredContainers.length / rowsPerPage);
     const displayedContainers = filteredContainers.slice((page - 1) * rowsPerPage, page * rowsPerPage);
 
+    // 搜索高亮
+    const highlight = (text: string) => {
+        const q = searchQuery.trim();
+        if (!q) return text;
+        const idx = text.toLowerCase().indexOf(q.toLowerCase());
+        if (idx === -1) return text;
+        return <>{text.slice(0, idx)}<Box component="span" sx={{ bgcolor: '#fef08a', color: '#000', borderRadius: 0.5, px: 0.25 }}>{text.slice(idx, idx + q.length)}</Box>{text.slice(idx + q.length)}</>;
+    };
+
     const handleSelectAll = () => {
         if (selectedContainers.length === filteredContainers.length) {
             setSelectedContainers([]);
@@ -134,7 +143,7 @@ export default function Dashboard() {
             const data = await nodeApi.list();
             setNodes(data.nodes || []);
         } catch (e) {
-            console.error(e);
+            toast.error('获取节点列表失败');
         }
     };
 
@@ -168,6 +177,17 @@ export default function Dashboard() {
             setSelectedNode(nodeParam);
         }
     }, []);
+
+    // 节点筛选持久化到 URL
+    useEffect(() => {
+        const url = new URL(window.location.href);
+        if (selectedNode && selectedNode !== 'local') {
+            url.searchParams.set('node', selectedNode);
+        } else {
+            url.searchParams.delete('node');
+        }
+        window.history.replaceState({}, '', url.toString());
+    }, [selectedNode]);
 
     // Stats 15s 轮询（页面可见时才跑）
     useEffect(() => {
@@ -386,7 +406,7 @@ export default function Dashboard() {
                                         </Typography>
                                     )}
                                 </Box>
-                                <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, color: 'text.primary' }} noWrap>{c.name}</Typography>
+                                <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, color: 'text.primary' }} noWrap>{highlight(c.name)}</Typography>
                                 <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>ID: {c.id}</Typography>
                                 {statsMap[c.name] && c.status === 'running' && (
                                     <Typography variant="caption" sx={{ mt: 0.5, display: 'block', color: 'text.secondary', fontFamily: 'monospace', fontSize: '0.7rem' }}>

@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from services.log import logger
 from services.config import FRONTEND_DIST
@@ -146,6 +147,9 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 app.add_middleware(CSRFMiddleware)
+
+# Gzip 压缩中间件 — 对 >500B 的响应自动压缩（API JSON + 静态资源，传输量 -60%）
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # ============ 注册路由 ============
 

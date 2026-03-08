@@ -16,7 +16,7 @@ import {
 } from '@mui/material';
 import { Refresh as RefreshIcon, FiberManualRecord as DotIcon, Download as DownloadIcon } from '@mui/icons-material';
 import { operationLogsApi, type OperationLog } from '../services/api';
-import { useTranslate } from '../i18n';
+import { useToast } from '../components/Toast';
 
 const OperationLogs: React.FC = () => {
     const [logs, setLogs] = useState<OperationLog[]>([]);
@@ -24,13 +24,15 @@ const OperationLogs: React.FC = () => {
     const [limit, setLimit] = useState(50);
     const t = useTranslate();
 
+    const toast = useToast();
+
     const fetchLogs = async () => {
         setLoading(true);
         try {
             const data = await operationLogsApi.list(limit);
             setLogs((data.logs || []).reverse());
         } catch (error) {
-            console.error('Failed to fetch operation logs:', error);
+            toast.error('获取操作日志失败');
         } finally {
             setLoading(false);
         }
@@ -38,6 +40,17 @@ const OperationLogs: React.FC = () => {
 
     useEffect(() => {
         fetchLogs();
+    }, [limit]);
+
+    // 15s 自动刷新 + 可见性感知
+    useEffect(() => {
+        let interval: ReturnType<typeof setInterval>;
+        const start = () => { interval = setInterval(fetchLogs, 15000); };
+        const stop = () => { clearInterval(interval); };
+        const onVis = () => { document.hidden ? stop() : start(); };
+        if (!document.hidden) start();
+        document.addEventListener('visibilitychange', onVis);
+        return () => { stop(); document.removeEventListener('visibilitychange', onVis); };
     }, [limit]);
 
     const getLevelColor = (level: string): 'info' | 'warning' | 'error' | 'default' => {
