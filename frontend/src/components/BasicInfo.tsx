@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import {
     Box, Typography, Button, CircularProgress, Chip, Divider,
-    Grid, Card, CardContent, useTheme, Alert, IconButton, Tooltip,
+    Grid, useTheme, IconButton, Tooltip,
     Dialog, DialogTitle, DialogContent, DialogActions, FormControlLabel, Checkbox
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -176,39 +176,77 @@ export const BasicInfo = ({ name, node_id }: BasicInfoProps) => {
         ? `https://q1.qlogo.cn/g?b=qq&nk=${qqNumber}&s=640`
         : "https://napneko.github.io/assets/newnewlogo.png";
 
+    const isDark = theme.palette.mode === 'dark';
+    const glassStyle = {
+        background: isDark ? 'rgba(20,20,40,0.55)' : 'rgba(255,255,255,0.55)',
+        backdropFilter: 'blur(20px) saturate(150%)',
+        WebkitBackdropFilter: 'blur(20px) saturate(150%)',
+        border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)'}`,
+        boxShadow: isDark ? '0 8px 32px rgba(0,0,0,0.3)' : '0 8px 32px rgba(192,132,252,0.1)',
+    };
+
     return (
         <Box>
             {/* 头部状态与操作栏 */}
             <Box sx={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3,
-                p: 2.5, borderRadius: 3,
-                background: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : '#fff',
-                border: `1px solid ${theme.palette.divider}`,
-                boxShadow: theme.palette.mode === 'dark' ? 'none' : '0 4px 20px rgba(0,0,0,0.03)',
-                flexWrap: 'wrap', gap: 2
+                p: 2.5, borderRadius: '20px',
+                ...glassStyle,
+                flexWrap: 'wrap', gap: 2,
+                position: 'relative', overflow: 'hidden',
+                animation: 'fadeInUp 0.5s ease-out',
             }}>
+                {/* 顶部渐变装饰线 */}
+                <Box sx={{
+                    position: 'absolute', top: 0, left: 0, right: 0, height: 2,
+                    background: isRunning
+                        ? 'linear-gradient(90deg, #10b981, #34d399)'
+                        : 'linear-gradient(90deg, #94a3b8, #cbd5e1)',
+                }} />
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                     <Box sx={{ position: 'relative' }}>
-                        <Box component="img" src={avatarUrl} sx={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', bgcolor: '#fff', filter: isRunning ? 'none' : 'grayscale(100%)', opacity: isRunning ? 1 : 0.6 }} />
+                        {/* 头像 CSS Mask 圆形遮罩 */}
+                        <Box component="img" src={avatarUrl} sx={{
+                            width: 50, height: 50, borderRadius: '50%', objectFit: 'cover',
+                            filter: isRunning ? 'none' : 'grayscale(100%)',
+                            opacity: isRunning ? 1 : 0.6,
+                            border: `2px solid ${isRunning ? 'rgba(16,185,129,0.5)' : 'rgba(148,163,184,0.3)'}`,
+                            maskImage: 'radial-gradient(circle, #000 60%, transparent 100%)',
+                            WebkitMaskImage: 'radial-gradient(circle, #000 60%, transparent 100%)',
+                            boxShadow: isRunning ? '0 0 16px rgba(16,185,129,0.4)' : 'none',
+                        }} />
+                        {/* 发光状态指示灯 */}
                         <Box sx={{
-                            position: 'absolute', bottom: 0, right: 0, width: 12, height: 12,
-                            borderRadius: '50%', bgcolor: isRunning ? '#10b981' : '#94a3b8',
-                            border: `2px solid ${theme.palette.background.paper}`
+                            position: 'absolute', bottom: 1, right: 1, width: 13, height: 13,
+                            borderRadius: '50%',
+                            bgcolor: isRunning ? '#10b981' : '#94a3b8',
+                            border: `2px solid ${isDark ? 'rgba(20,20,40,0.8)' : 'rgba(255,255,255,0.9)'}`,
+                            boxShadow: isRunning ? '0 0 8px #10b981, 0 0 16px rgba(16,185,129,0.5)' : 'none',
+                            animation: isRunning ? 'pulseGlow 2s infinite' : 'none',
                         }} />
                     </Box>
                     <Box>
-                        <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>{name}</Typography>
+                        <Typography variant="h6" sx={{
+                            fontWeight: 800, lineHeight: 1.2,
+                            background: 'linear-gradient(135deg, #ff6b9d, #c084fc)',
+                            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+                        }}>{name}</Typography>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
                             <Chip label={isRunning ? t('basicInfo.running') : (stats.status || t('basicInfo.unknown'))}
                                 size="small"
                                 sx={{
-                                    height: 20, fontSize: '0.7rem', fontWeight: 600,
-                                    bgcolor: isRunning ? 'rgba(16,185,129,0.1)' : 'rgba(148,163,184,0.1)',
-                                    color: isRunning ? '#059669' : '#64748b',
-                                    border: `1px solid ${isRunning ? 'rgba(16,185,129,0.2)' : 'rgba(148,163,184,0.2)'}`
+                                    height: 20, fontSize: '0.7rem', fontWeight: 700,
+                                    bgcolor: isRunning ? 'rgba(16,185,129,0.15)' : 'rgba(148,163,184,0.15)',
+                                    color: isRunning ? '#10b981' : '#94a3b8',
+                                    border: `1px solid ${isRunning ? 'rgba(16,185,129,0.35)' : 'rgba(148,163,184,0.3)'}`,
+                                    boxShadow: isRunning ? '0 0 8px rgba(16,185,129,0.3)' : 'none',
                                 }} />
                             {stats.version && stats.version !== 'Unknown' && (
-                                <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace', bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', px: 1, borderRadius: 1 }}>
+                                <Typography variant="caption" sx={{
+                                    fontFamily: 'monospace',
+                                    bgcolor: isDark ? 'rgba(192,132,252,0.1)' : 'rgba(192,132,252,0.08)',
+                                    color: '#c084fc', px: 1, borderRadius: 1, fontWeight: 600,
+                                }}>
                                     v{stats.version}
                                 </Typography>
                             )}
@@ -217,154 +255,193 @@ export const BasicInfo = ({ name, node_id }: BasicInfoProps) => {
                 </Box>
                 <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                     {!isRunning ? (
-                        <Button size="medium" variant="contained" color="success" startIcon={<PlayArrowIcon />}
+                        <Button size="medium" variant="contained" startIcon={<PlayArrowIcon />}
                             onClick={() => handleAction('start')} disabled={!!actionLoading}
-                            sx={{ borderRadius: 2, boxShadow: 'none', textTransform: 'none' }}>{t('basicInfo.start')}</Button>
+                            sx={{
+                                borderRadius: '12px', textTransform: 'none', fontWeight: 700,
+                                background: 'linear-gradient(135deg, #10b981, #059669)',
+                                boxShadow: '0 4px 14px rgba(16,185,129,0.4)',
+                                '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 6px 20px rgba(16,185,129,0.5)' },
+                                transition: 'all 0.25s',
+                            }}>{t('basicInfo.start')}</Button>
                     ) : (
                         <>
-                            <Button size="medium" variant="outlined" color="warning" startIcon={<StopIcon />}
+                            <Button size="medium" variant="outlined" startIcon={<StopIcon />}
                                 onClick={() => handleAction('stop')} disabled={!!actionLoading}
-                                sx={{ borderRadius: 2, textTransform: 'none' }}>{t('basicInfo.stop')}</Button>
-                            <Button size="medium" variant="outlined" color="info" startIcon={<RestartAltIcon />}
+                                sx={{
+                                    borderRadius: '12px', textTransform: 'none', fontWeight: 600,
+                                    borderColor: 'rgba(245,158,11,0.5)', color: '#f59e0b',
+                                    '&:hover': { borderColor: '#f59e0b', bgcolor: 'rgba(245,158,11,0.1)', transform: 'translateY(-2px)' },
+                                    transition: 'all 0.25s',
+                                }}>{t('basicInfo.stop')}</Button>
+                            <Button size="medium" variant="outlined" startIcon={<RestartAltIcon />}
                                 onClick={() => handleAction('restart')} disabled={!!actionLoading}
-                                sx={{ borderRadius: 2, textTransform: 'none' }}>{t('basicInfo.restart')}</Button>
+                                sx={{
+                                    borderRadius: '12px', textTransform: 'none', fontWeight: 600,
+                                    borderColor: 'rgba(96,165,250,0.5)', color: '#60a5fa',
+                                    '&:hover': { borderColor: '#60a5fa', bgcolor: 'rgba(96,165,250,0.1)', transform: 'translateY(-2px)' },
+                                    transition: 'all 0.25s',
+                                }}>{t('basicInfo.restart')}</Button>
                         </>
                     )}
                     {stats.webui_port && stats.webui_token && (
                         <Button size="medium" variant="contained" startIcon={<OpenInNewIcon />}
                             onClick={openWebUI}
-                            sx={{ borderRadius: 2, background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)', textTransform: 'none', '&:hover': { background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)' } }}>
-                            WebUI
-                        </Button>
+                            sx={{
+                                borderRadius: '12px', textTransform: 'none', fontWeight: 700,
+                                background: 'linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%)',
+                                boxShadow: '0 4px 14px rgba(59,130,246,0.35)',
+                                '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 6px 20px rgba(59,130,246,0.5)' },
+                                transition: 'all 0.25s',
+                            }}>WebUI</Button>
                     )}
                     <Tooltip title={t('basicInfo.refreshTooltip')}>
                         <IconButton size="medium" onClick={handleRefresh} disabled={loading}
-                            sx={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 2 }}>
-                            {loading ? <CircularProgress size={20} /> : <RefreshIcon fontSize="small" />}
+                            sx={{
+                                border: `1px solid ${isDark ? 'rgba(192,132,252,0.3)' : 'rgba(192,132,252,0.25)'}`,
+                                borderRadius: '12px', color: '#c084fc',
+                                '&:hover': { bgcolor: 'rgba(192,132,252,0.12)', transform: 'rotate(180deg)' },
+                                transition: 'all 0.4s',
+                            }}>
+                            {loading ? <CircularProgress size={20} sx={{ color: '#c084fc' }} /> : <RefreshIcon fontSize="small" />}
                         </IconButton>
                     </Tooltip>
-                    <Button size="medium" variant="outlined" color="error" startIcon={<DeleteOutlineIcon />}
+                    <Button size="medium" variant="outlined" startIcon={<DeleteOutlineIcon />}
                         onClick={() => handleAction('delete')} disabled={!!actionLoading}
-                        sx={{ borderRadius: 2, textTransform: 'none' }}>{t('basicInfo.delete')}</Button>
+                        sx={{
+                            borderRadius: '12px', textTransform: 'none', fontWeight: 600,
+                            borderColor: 'rgba(239,68,68,0.4)', color: '#ef4444',
+                            '&:hover': { borderColor: '#ef4444', bgcolor: 'rgba(239,68,68,0.08)', transform: 'translateY(-2px)' },
+                            transition: 'all 0.25s',
+                        }}>{t('basicInfo.delete')}</Button>
                 </Box>
             </Box>
 
             {/* 二维码区域 */}
             {showQrcode && !isLoggedIn && (
-                <Card sx={{
-                    mb: 3, borderRadius: 3, border: `1px solid ${theme.palette.warning.main}40`,
-                    background: theme.palette.mode === 'dark' ? `linear-gradient(135deg, ${theme.palette.warning.main}15 0%, transparent 100%)` : `linear-gradient(135deg, #fffbeb 0%, #fff 100%)`,
-                    boxShadow: theme.palette.mode === 'dark' ? 'none' : '0 4px 20px rgba(245,158,11,0.05)'
+                <Box sx={{
+                    mb: 3, borderRadius: '20px', p: 3,
+                    ...glassStyle,
+                    border: `1px solid rgba(245,158,11,0.35)`,
+                    background: isDark
+                        ? 'rgba(245,158,11,0.06)'
+                        : 'rgba(255,251,235,0.8)',
+                    backdropFilter: 'blur(20px) saturate(150%)',
+                    WebkitBackdropFilter: 'blur(20px) saturate(150%)',
+                    position: 'relative', overflow: 'hidden',
+                    animation: 'fadeInUp 0.5s ease-out 0.1s both',
                 }}>
-                    <CardContent sx={{ p: 3 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                            <Box sx={{ p: 1, borderRadius: 2, bgcolor: `${theme.palette.warning.main}20`, mr: 2, display: 'flex' }}>
-                                <QrCode2Icon sx={{ fontSize: 24, color: 'warning.main' }} />
-                            </Box>
-                            <Box>
-                                <Typography variant="h6" sx={{ fontWeight: 700, color: 'warning.main' }}>{t('basicInfo.qrLogin')}</Typography>
-                                <Typography variant="body2" color="text.secondary">{t('basicInfo.qrLoginDesc')}</Typography>
-                            </Box>
+                    <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'linear-gradient(90deg, #f59e0b, #fbbf24, #f59e0b)' }} />
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                        <Box sx={{ p: 1, borderRadius: '12px', bgcolor: 'rgba(245,158,11,0.15)', mr: 2, display: 'flex', boxShadow: '0 0 12px rgba(245,158,11,0.3)' }}>
+                            <QrCode2Icon sx={{ fontSize: 24, color: '#f59e0b' }} />
                         </Box>
-                        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4, mb: 2 }}>
-                            {qrcode ? (
-                                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-                                    <Box sx={{ p: 2.5, bgcolor: '#fff', borderRadius: 4, boxShadow: '0 8px 32px rgba(0,0,0,0.08)', border: '1px solid rgba(0,0,0,0.05)' }}>
-                                        <img src={qrcode} alt="QR Code" style={{ width: 220, height: 220, display: 'block', borderRadius: 8 }} />
-                                    </Box>
-                                    <Button variant="text" size="small" startIcon={<RefreshIcon />} onClick={fetchQrcode}
-                                        sx={{ color: 'text.secondary', fontWeight: 600, borderRadius: 2 }}>
-                                        {t('basicInfo.refreshQr')}
-                                    </Button>
-                                </Box>
-                            ) : (
-                                <Box sx={{ py: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                                    <CircularProgress size={40} thickness={4} sx={{ color: 'warning.main' }} />
-                                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                                        {t('basicInfo.fetchingQr')}
-                                    </Typography>
-                                </Box>
-                            )}
+                        <Box>
+                            <Typography variant="h6" sx={{ fontWeight: 700, color: '#f59e0b' }}>{t('basicInfo.qrLogin')}</Typography>
+                            <Typography variant="body2" color="text.secondary">{t('basicInfo.qrLoginDesc')}</Typography>
                         </Box>
-                    </CardContent>
-                </Card>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4, mb: 2 }}>
+                        {qrcode ? (
+                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                                <Box sx={{ p: 2.5, bgcolor: '#fff', borderRadius: '20px', boxShadow: '0 8px 32px rgba(245,158,11,0.2)', border: '2px solid rgba(245,158,11,0.25)' }}>
+                                    <img src={qrcode} alt="QR Code" style={{ width: 220, height: 220, display: 'block', borderRadius: 12 }} />
+                                </Box>
+                                <Button variant="text" size="small" startIcon={<RefreshIcon />} onClick={fetchQrcode}
+                                    sx={{ color: '#f59e0b', fontWeight: 600, borderRadius: '10px', '&:hover': { bgcolor: 'rgba(245,158,11,0.1)' } }}>
+                                    {t('basicInfo.refreshQr')}
+                                </Button>
+                            </Box>
+                        ) : (
+                            <Box sx={{ py: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                                <CircularProgress size={40} thickness={4} sx={{ color: '#f59e0b' }} />
+                                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+                                    {t('basicInfo.fetchingQr')}
+                                </Typography>
+                            </Box>
+                        )}
+                    </Box>
+                </Box>
             )}
 
             {/* 信息卡片 */}
             <Grid container spacing={3}>
                 <Grid item xs={12} md={6}>
-                    <Card sx={{
-                        height: '100%', borderRadius: 3, border: `1px solid ${theme.palette.divider}`,
-                        background: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : '#fff',
-                        boxShadow: theme.palette.mode === 'dark' ? 'none' : '0 4px 20px rgba(0,0,0,0.03)',
-                        transition: 'transform 0.3s, box-shadow 0.3s',
-                        '&:hover': {
-                            transform: 'translateY(-2px)',
-                            boxShadow: theme.palette.mode === 'dark' ? '0 8px 32px rgba(0,0,0,0.2)' : '0 12px 32px rgba(0,0,0,0.06)'
-                        }
+                    <Box sx={{
+                        height: '100%', borderRadius: '20px', p: 3,
+                        ...glassStyle,
+                        position: 'relative', overflow: 'hidden',
+                        transition: 'all 0.3s', animation: 'fadeInUp 0.5s ease-out 0.15s both',
+                        '&:hover': { transform: 'translateY(-4px)', boxShadow: isDark ? '0 16px 48px rgba(192,132,252,0.2)' : '0 16px 48px rgba(192,132,252,0.15)' }
                     }}>
-                        <CardContent sx={{ p: 3 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                                <Box sx={{ p: 1, borderRadius: 2, bgcolor: 'rgba(59,130,246,0.1)', mr: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40 }}>
-                                    <Box component="img" src={avatarUrl} sx={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover' }} />
-                                </Box>
-                                <Typography variant="h6" sx={{ fontWeight: 700 }}>{t('basicInfo.infoTitle')}</Typography>
+                        <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'linear-gradient(90deg, #ff6b9d, #c084fc)' }} />
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                            <Box sx={{ p: 1, borderRadius: '12px', background: 'linear-gradient(135deg, rgba(255,107,157,0.2), rgba(192,132,252,0.2))', mr: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, boxShadow: '0 0 12px rgba(192,132,252,0.25)' }}>
+                                <Box component="img" src={avatarUrl} sx={{ width: 26, height: 26, borderRadius: '50%', objectFit: 'cover' }} />
                             </Box>
-                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                <InfoRow label={t('basicInfo.qqAccount')} value={stats.uin ? String(stats.uin).replace(/\D/g, '') : '-'} highlight />
-                                <InfoRow label={t('basicInfo.napcatVersion')} value={stats.version || '-'} />
-                                <InfoRow label={t('basicInfo.platform')} value={stats.platform || '-'} />
-                                <InfoRow label={t('basicInfo.uptime')} value={stats.uptime_formatted || '-'} />
-                                <InfoRow label={t('basicInfo.webuiPort')} value={stats.webui_port ? String(stats.webui_port) : '-'} />
-                            </Box>
-                        </CardContent>
-                    </Card>
+                            <Typography variant="h6" sx={{ fontWeight: 700, background: 'linear-gradient(135deg, #ff6b9d, #c084fc)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>{t('basicInfo.infoTitle')}</Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <InfoRow label={t('basicInfo.qqAccount')} value={stats.uin ? String(stats.uin).replace(/\D/g, '') : '-'} highlight />
+                            <InfoRow label={t('basicInfo.napcatVersion')} value={stats.version || '-'} />
+                            <InfoRow label={t('basicInfo.platform')} value={stats.platform || '-'} />
+                            <InfoRow label={t('basicInfo.uptime')} value={stats.uptime_formatted || '-'} />
+                            <InfoRow label={t('basicInfo.webuiPort')} value={stats.webui_port ? String(stats.webui_port) : '-'} />
+                        </Box>
+                    </Box>
                 </Grid>
 
                 <Grid item xs={12} md={6}>
-                    <Card sx={{
-                        height: '100%', borderRadius: 3, border: `1px solid ${theme.palette.divider}`,
-                        background: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : '#fff',
-                        boxShadow: theme.palette.mode === 'dark' ? 'none' : '0 4px 20px rgba(0,0,0,0.03)',
-                        transition: 'transform 0.3s, box-shadow 0.3s',
-                        '&:hover': {
-                            transform: 'translateY(-2px)',
-                            boxShadow: theme.palette.mode === 'dark' ? '0 8px 32px rgba(0,0,0,0.2)' : '0 12px 32px rgba(0,0,0,0.06)'
-                        }
+                    <Box sx={{
+                        height: '100%', borderRadius: '20px', p: 3,
+                        ...glassStyle,
+                        position: 'relative', overflow: 'hidden',
+                        transition: 'all 0.3s', animation: 'fadeInUp 0.5s ease-out 0.25s both',
+                        '&:hover': { transform: 'translateY(-4px)', boxShadow: isDark ? '0 16px 48px rgba(16,185,129,0.2)' : '0 16px 48px rgba(16,185,129,0.15)' }
                     }}>
-                        <CardContent sx={{ p: 3 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                                <Box sx={{ p: 1, borderRadius: 2, bgcolor: 'rgba(16,185,129,0.1)', mr: 2, display: 'flex' }}>
-                                    <MemoryIcon sx={{ fontSize: 24, color: '#10b981' }} />
-                                </Box>
-                                <Typography variant="h6" sx={{ fontWeight: 700 }}>{t('basicInfo.systemResources')}</Typography>
+                        <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'linear-gradient(90deg, #10b981, #34d399)' }} />
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                            <Box sx={{ p: 1, borderRadius: '12px', bgcolor: 'rgba(16,185,129,0.15)', mr: 2, display: 'flex', boxShadow: '0 0 12px rgba(16,185,129,0.3)' }}>
+                                <MemoryIcon sx={{ fontSize: 24, color: '#10b981' }} />
                             </Box>
-                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                <InfoRow label={t('basicInfo.cpuUsage')} value={`${(stats.cpu_percent || 0).toFixed(1)}%`} />
-                                <InfoRow label={t('basicInfo.memUsage')} value={stats.mem_usage ? `${formatMB(stats.mem_usage)} / ${formatMB(stats.mem_limit || 0)}` : '-'} />
-                                <Divider sx={{ my: 1, opacity: 0.6 }} />
-                                <Box>
-                                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, mb: 1, display: 'block', textTransform: 'uppercase', letterSpacing: 1 }}>{t('basicInfo.networkEndpoints')}</Typography>
-                                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                                        <Chip label={`HTTP: ${stats.network_endpoints?.http || 0}`} size="small"
-                                            sx={{ borderRadius: 1.5, fontWeight: 600, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#f1f5f9', border: `1px solid ${theme.palette.divider}` }} />
-                                        <Chip label={`WS: ${stats.network_endpoints?.ws || 0}`} size="small"
-                                            sx={{ borderRadius: 1.5, fontWeight: 600, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#f1f5f9', border: `1px solid ${theme.palette.divider}` }} />
-                                        <Chip label={`HTTP Client: ${stats.network_endpoints?.http_client || 0}`} size="small"
-                                            sx={{ borderRadius: 1.5, fontWeight: 600, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#f1f5f9', border: `1px solid ${theme.palette.divider}` }} />
-                                        <Chip label={`WS Client: ${stats.network_endpoints?.ws_client || 0}`} size="small"
-                                            sx={{ borderRadius: 1.5, fontWeight: 600, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#f1f5f9', border: `1px solid ${theme.palette.divider}` }} />
-                                    </Box>
+                            <Typography variant="h6" sx={{ fontWeight: 700, background: 'linear-gradient(135deg, #10b981, #34d399)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>{t('basicInfo.systemResources')}</Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <InfoRow label={t('basicInfo.cpuUsage')} value={`${(stats.cpu_percent || 0).toFixed(1)}%`} />
+                            <InfoRow label={t('basicInfo.memUsage')} value={stats.mem_usage ? `${formatMB(stats.mem_usage)} / ${formatMB(stats.mem_limit || 0)}` : '-'} />
+                            <Divider sx={{ my: 1, opacity: 0.3, borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }} />
+                            <Box>
+                                <Typography variant="caption" sx={{ fontWeight: 700, mb: 1, display: 'block', textTransform: 'uppercase', letterSpacing: 1, color: '#10b981' }}>{t('basicInfo.networkEndpoints')}</Typography>
+                                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                                    {[
+                                        { label: `HTTP: ${stats.network_endpoints?.http || 0}`, color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
+                                        { label: `WS: ${stats.network_endpoints?.ws || 0}`, color: '#c084fc', bg: 'rgba(192,132,252,0.12)' },
+                                        { label: `HTTP Client: ${stats.network_endpoints?.http_client || 0}`, color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
+                                        { label: `WS Client: ${stats.network_endpoints?.ws_client || 0}`, color: '#ff6b9d', bg: 'rgba(255,107,157,0.12)' },
+                                    ].map(chip => (
+                                        <Chip key={chip.label} label={chip.label} size="small" sx={{
+                                            borderRadius: '8px', fontWeight: 700,
+                                            bgcolor: chip.bg, color: chip.color,
+                                            border: `1px solid ${chip.color}40`,
+                                        }} />
+                                    ))}
                                 </Box>
                             </Box>
-                        </CardContent>
-                    </Card>
+                        </Box>
+                    </Box>
                 </Grid>
             </Grid>
 
             {/* 删除确认对话框 */}
             <Dialog open={deleteDialog.open} onClose={() => setDeleteDialog({ ...deleteDialog, open: false })}
-                PaperProps={{ sx: { borderRadius: 3, p: 1, minWidth: 420 } }}>
+                PaperProps={{ sx: {
+                    borderRadius: '24px', p: 1, minWidth: 420,
+                    background: isDark ? 'rgba(20,20,40,0.85)' : 'rgba(255,255,255,0.85)',
+                    backdropFilter: 'blur(24px) saturate(150%)',
+                    WebkitBackdropFilter: 'blur(24px) saturate(150%)',
+                    border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)'}`,
+                    boxShadow: '0 24px 64px rgba(0,0,0,0.25)',
+                }}}>
                 <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
                     <WarningAmberIcon sx={{ color: '#ef4444' }} />
                     {t('basicInfo.confirmDeleteTitle')}
@@ -387,8 +464,8 @@ export const BasicInfo = ({ name, node_id }: BasicInfoProps) => {
                     />
                 </DialogContent>
                 <DialogActions sx={{ p: 2, pt: 0 }}>
-                    <Button onClick={() => setDeleteDialog({ ...deleteDialog, open: false })} color="inherit" sx={{ borderRadius: 2 }}>{t('basicInfo.cancel')}</Button>
-                    <Button onClick={confirmDelete} variant="contained" color="error" disableElevation sx={{ borderRadius: 2 }}>
+                    <Button onClick={() => setDeleteDialog({ ...deleteDialog, open: false })} color="inherit" sx={{ borderRadius: '12px' }}>{t('basicInfo.cancel')}</Button>
+                    <Button onClick={confirmDelete} variant="contained" color="error" disableElevation sx={{ borderRadius: '12px', background: 'linear-gradient(135deg, #ef4444, #dc2626)', boxShadow: '0 4px 14px rgba(239,68,68,0.4)' }}>
                         {deleteDialog.deleteData ? t('basicInfo.deleteInstanceAndData') : t('basicInfo.deleteInstanceOnly')}
                     </Button>
                 </DialogActions>
@@ -400,20 +477,20 @@ export const BasicInfo = ({ name, node_id }: BasicInfoProps) => {
 const InfoRow = ({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) => (
     <Box sx={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        p: 1.5, borderRadius: 2,
-        bgcolor: highlight ? 'rgba(59,130,246,0.05)' : 'transparent',
-        border: highlight ? '1px solid rgba(59,130,246,0.1)' : '1px solid transparent',
-        transition: 'background-color 0.2s',
-        '&:hover': { bgcolor: highlight ? 'rgba(59,130,246,0.08)' : 'rgba(0,0,0,0.02)' }
+        p: 1.5, borderRadius: '10px',
+        bgcolor: highlight ? 'rgba(192,132,252,0.08)' : 'transparent',
+        border: highlight ? '1px solid rgba(192,132,252,0.2)' : '1px solid transparent',
+        transition: 'all 0.2s',
+        '&:hover': { bgcolor: highlight ? 'rgba(192,132,252,0.12)' : 'rgba(192,132,252,0.04)' }
     }}>
         <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>{label}</Typography>
         <Typography variant="body2" sx={{
             fontWeight: highlight ? 700 : 600,
             fontFamily: 'monospace',
-            color: highlight ? '#3b82f6' : 'text.primary',
-            bgcolor: highlight ? '#fff' : 'transparent',
-            px: highlight ? 1.5 : 0, py: highlight ? 0.5 : 0, borderRadius: 1.5,
-            boxShadow: highlight ? '0 2px 8px rgba(0,0,0,0.04)' : 'none'
+            color: highlight ? '#c084fc' : 'text.primary',
+            bgcolor: highlight ? 'rgba(192,132,252,0.1)' : 'transparent',
+            px: highlight ? 1.5 : 0, py: highlight ? 0.5 : 0, borderRadius: '8px',
+            boxShadow: highlight ? '0 0 8px rgba(192,132,252,0.25)' : 'none'
         }}>{value}</Typography>
     </Box>
 );

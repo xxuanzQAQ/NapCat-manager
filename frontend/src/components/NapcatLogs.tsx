@@ -4,7 +4,7 @@
  */
 import { useState, useEffect, useRef } from 'react';
 import {
-    Box, Typography, Button, TextField, Paper, CircularProgress, Card, CardContent, useTheme
+    Box, Typography, Button, TextField, CircularProgress, useTheme
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import TerminalIcon from '@mui/icons-material/Terminal';
@@ -65,24 +65,31 @@ export const NapcatLogs = ({ name, node_id }: NapcatLogsProps) => {
         return () => { stop(); document.removeEventListener('visibilitychange', onVis); };
     }, [name, node_id, lines, autoRefresh]);
 
+    const isDark = theme.palette.mode === 'dark';
+
     return (
         <Box sx={{ mt: 1, height: '100%', display: 'flex', flexDirection: 'column' }}>
+            {/* 工具栏 */}
             <Box sx={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3,
-                p: 2.5, borderRadius: 3, flexWrap: 'wrap', gap: 2,
-                background: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : '#fff',
-                border: `1px solid ${theme.palette.divider}`,
-                boxShadow: theme.palette.mode === 'dark' ? 'none' : '0 4px 20px rgba(0,0,0,0.03)'
+                p: 2.5, borderRadius: '20px', flexWrap: 'wrap', gap: 2,
+                background: isDark ? 'rgba(20,20,40,0.55)' : 'rgba(255,255,255,0.55)',
+                backdropFilter: 'blur(20px) saturate(150%)',
+                WebkitBackdropFilter: 'blur(20px) saturate(150%)',
+                border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)'}`,
+                boxShadow: isDark ? '0 8px 32px rgba(0,0,0,0.3)' : '0 8px 32px rgba(236,72,153,0.1)',
+                position: 'relative', overflow: 'hidden',
+                animation: 'fadeInUp 0.4s ease-out',
             }}>
+                {/* 顶部渐变装饰线 */}
+                <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'linear-gradient(90deg, #ff6b9d, #c084fc, #60a5fa)' }} />
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Box sx={{ p: 1, borderRadius: 2, bgcolor: 'rgba(236,72,153,0.1)', display: 'flex' }}>
+                    <Box sx={{ p: 1, borderRadius: '12px', bgcolor: 'rgba(236,72,153,0.15)', display: 'flex', boxShadow: '0 0 12px rgba(236,72,153,0.35)' }}>
                         <TerminalIcon sx={{ fontSize: 24, color: '#ec4899' }} />
                     </Box>
                     <Box>
-                        <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>{t('config.containerLogs')}</Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                            {t('config.logsSubtitle')}
-                        </Typography>
+                        <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2, background: 'linear-gradient(135deg, #ff6b9d, #c084fc)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>{t('config.containerLogs')}</Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{t('config.logsSubtitle')}</Typography>
                     </Box>
                 </Box>
                 <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -92,14 +99,24 @@ export const NapcatLogs = ({ name, node_id }: NapcatLogsProps) => {
                         label={t('config.fetchLines')}
                         value={lines}
                         onChange={(e) => setLines(parseInt(e.target.value) || 200)}
-                        sx={{ width: 100, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                        sx={{ width: 100, '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}
                     />
                     <Button
                         variant={autoRefresh ? "contained" : "outlined"}
-                        color={autoRefresh ? "success" : "inherit"}
                         size="medium"
                         onClick={() => setAutoRefresh(!autoRefresh)}
-                        sx={{ borderRadius: 2, textTransform: 'none', px: 2, fontWeight: 600, height: 40, boxShadow: 'none' }}
+                        sx={{
+                            borderRadius: '12px', textTransform: 'none', px: 2, fontWeight: 700, height: 40, boxShadow: 'none',
+                            ...(autoRefresh ? {
+                                background: 'linear-gradient(135deg, #10b981, #059669)',
+                                boxShadow: '0 4px 14px rgba(16,185,129,0.4)',
+                                '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 6px 20px rgba(16,185,129,0.5)' },
+                            } : {
+                                borderColor: 'rgba(148,163,184,0.4)', color: 'text.secondary',
+                                '&:hover': { borderColor: '#c084fc', color: '#c084fc', bgcolor: 'rgba(192,132,252,0.08)' },
+                            }),
+                            transition: 'all 0.25s',
+                        }}
                     >
                         {autoRefresh ? t('config.autoRefreshOn') : t('config.autoRefreshOff')}
                     </Button>
@@ -109,7 +126,13 @@ export const NapcatLogs = ({ name, node_id }: NapcatLogsProps) => {
                         disabled={loading}
                         size="medium"
                         variant="contained"
-                        sx={{ borderRadius: 2, textTransform: 'none', px: 2, fontWeight: 600, height: 40, bgcolor: '#3b82f6', '&:hover': { bgcolor: '#2563eb' }, boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}
+                        sx={{
+                            borderRadius: '12px', textTransform: 'none', px: 2, fontWeight: 700, height: 40,
+                            background: 'linear-gradient(135deg, #60a5fa, #3b82f6)',
+                            boxShadow: '0 4px 14px rgba(59,130,246,0.35)',
+                            '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 6px 20px rgba(59,130,246,0.5)' },
+                            transition: 'all 0.25s',
+                        }}
                     >
                         {t('config.manualRefresh')}
                     </Button>
@@ -117,47 +140,43 @@ export const NapcatLogs = ({ name, node_id }: NapcatLogsProps) => {
                         startIcon={<DownloadIcon />}
                         size="medium"
                         variant="outlined"
-                        onClick={() => {
-                            window.open(`/api/containers/${name}/logs/download?lines=${lines}&node_id=${node_id}`, '_blank');
+                        onClick={() => { window.open(`/api/containers/${name}/logs/download?lines=${lines}&node_id=${node_id}`, '_blank'); }}
+                        sx={{
+                            borderRadius: '12px', textTransform: 'none', px: 2, fontWeight: 600, height: 40,
+                            borderColor: 'rgba(192,132,252,0.4)', color: '#c084fc',
+                            '&:hover': { borderColor: '#c084fc', bgcolor: 'rgba(192,132,252,0.1)', transform: 'translateY(-2px)' },
+                            transition: 'all 0.25s',
                         }}
-                        sx={{ borderRadius: 2, textTransform: 'none', px: 2, fontWeight: 600, height: 40 }}
                     >
                         {t('config.exportLogs')}
                     </Button>
                 </Box>
             </Box>
 
-            <Paper
-                elevation={0}
+            {/* 日志区域 - 终端风格保持深色 */}
+            <Box
                 sx={{
-                    p: 2,
-                    bgcolor: theme.palette.mode === 'dark' ? '#0f172a' : '#1e293b',
+                    p: 2.5,
+                    bgcolor: isDark ? '#0a0a14' : '#0f172a',
                     color: '#e2e8f0',
                     fontFamily: '"Fira Code", Consolas, Monaco, monospace',
                     fontSize: '0.85rem',
-                    lineHeight: 1.6,
-                    maxHeight: 'calc(100vh - 280px)',
+                    lineHeight: 1.7,
+                    maxHeight: 'calc(100vh - 300px)',
                     minHeight: '400px',
                     overflow: 'auto',
                     whiteSpace: 'pre-wrap',
                     wordBreak: 'break-all',
-                    borderRadius: 3,
-                    border: `1px solid ${theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'transparent'}`,
-                    boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.2)',
-                    '&::-webkit-scrollbar': {
-                        width: '8px',
-                        height: '8px',
-                    },
-                    '&::-webkit-scrollbar-track': {
-                        background: 'rgba(0,0,0,0.1)',
-                        borderRadius: '4px',
-                    },
+                    borderRadius: '20px',
+                    border: `1px solid ${isDark ? 'rgba(192,132,252,0.15)' : 'rgba(192,132,252,0.2)'}`,
+                    boxShadow: `inset 0 2px 10px rgba(0,0,0,0.3), 0 8px 32px ${isDark ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.25)'}`,
+                    animation: 'fadeInUp 0.4s ease-out 0.15s both',
+                    '&::-webkit-scrollbar': { width: '8px', height: '8px' },
+                    '&::-webkit-scrollbar-track': { background: 'rgba(0,0,0,0.2)', borderRadius: '4px' },
                     '&::-webkit-scrollbar-thumb': {
-                        background: 'rgba(255,255,255,0.2)',
+                        background: 'linear-gradient(180deg, #ff6b9d40, #c084fc40)',
                         borderRadius: '4px',
-                        '&:hover': {
-                            background: 'rgba(255,255,255,0.3)',
-                        },
+                        '&:hover': { background: 'linear-gradient(180deg, #ff6b9d80, #c084fc80)' },
                     },
                 }}
             >
@@ -166,12 +185,12 @@ export const NapcatLogs = ({ name, node_id }: NapcatLogsProps) => {
                         {logs}
                     </Box>
                 ) : (
-                    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '300px', opacity: 0.5 }}>
-                        <Typography sx={{ fontFamily: 'inherit' }}>{loading ? t('config.loadingLogs') : t('config.noLogs2')}</Typography>
+                    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '300px', opacity: 0.4 }}>
+                        <Typography sx={{ fontFamily: 'inherit', color: '#c084fc' }}>{loading ? t('config.loadingLogs') : t('config.noLogs2')}</Typography>
                     </Box>
                 )}
                 <div ref={logsEndRef} />
-            </Paper>
+            </Box>
         </Box>
     );
 };

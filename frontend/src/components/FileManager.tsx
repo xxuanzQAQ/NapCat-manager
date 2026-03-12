@@ -161,7 +161,13 @@ const FileManager: React.FC<FileManagerProps> = ({ name, node_id }) => {
     };
 
     const isDark = theme.palette.mode === 'dark';
-    const hoverBg = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)';
+    const glassStyle = {
+        background: isDark ? 'rgba(20,20,40,0.55)' : 'rgba(255,255,255,0.55)',
+        backdropFilter: 'blur(20px) saturate(150%)',
+        WebkitBackdropFilter: 'blur(20px) saturate(150%)',
+        border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)'}`,
+    };
+    const hoverBg = isDark ? 'rgba(192,132,252,0.07)' : 'rgba(192,132,252,0.05)';
     const itemCount = sortedFolders.length + sortedFiles.length;
 
     return (
@@ -169,26 +175,28 @@ const FileManager: React.FC<FileManagerProps> = ({ name, node_id }) => {
             {/* ── 顶部工具栏：面包屑 + 刷新 ── */}
             <Box sx={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2,
-                px: 2, py: 1.5, borderRadius: 2,
-                bgcolor: isDark ? 'rgba(255,255,255,0.03)' : '#f8fafc',
-                border: `1px solid ${theme.palette.divider}`,
+                px: 2, py: 1.5, borderRadius: '16px',
+                ...glassStyle,
+                boxShadow: isDark ? '0 4px 24px rgba(0,0,0,0.25)' : '0 4px 24px rgba(192,132,252,0.1)',
+                animation: 'fadeInUp 0.4s ease-out',
             }}>
                 {/* 面包屑导航 */}
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0, overflow: 'hidden' }}>
-                    <IconButton size="small" onClick={() => navigateToBreadcrumb(-1)} sx={{ color: '#6366f1', flexShrink: 0 }}>
+                    <IconButton size="small" onClick={() => navigateToBreadcrumb(-1)}
+                        sx={{ color: '#c084fc', borderRadius: '10px', '&:hover': { bgcolor: 'rgba(192,132,252,0.15)' } }}>
                         <HomeIcon fontSize="small" />
                     </IconButton>
                     {breadcrumbs.map((seg, i) => (
                         <React.Fragment key={i}>
-                            <NavigateNextIcon sx={{ fontSize: 16, color: 'text.disabled', flexShrink: 0 }} />
+                            <NavigateNextIcon sx={{ fontSize: 16, color: '#c084fc', opacity: 0.5, flexShrink: 0 }} />
                             <Typography
                                 variant="body2"
                                 onClick={() => navigateToBreadcrumb(i)}
                                 noWrap
                                 sx={{
                                     cursor: 'pointer', fontWeight: i === breadcrumbs.length - 1 ? 700 : 400,
-                                    color: i === breadcrumbs.length - 1 ? 'text.primary' : 'text.secondary',
-                                    '&:hover': { color: '#6366f1', textDecoration: 'underline' },
+                                    color: i === breadcrumbs.length - 1 ? '#c084fc' : 'text.secondary',
+                                    '&:hover': { color: '#ff6b9d', textDecoration: 'underline' },
                                     maxWidth: 160,
                                 }}
                             >
@@ -197,32 +205,36 @@ const FileManager: React.FC<FileManagerProps> = ({ name, node_id }) => {
                         </React.Fragment>
                     ))}
                     {breadcrumbs.length === 0 && (
-                        <Typography variant="body2" color="text.secondary" sx={{ ml: 0.5 }}>{t('config.rootDir')}</Typography>
+                        <Typography variant="body2" sx={{ ml: 0.5, color: 'text.secondary' }}>{t('config.rootDir')}</Typography>
                     )}
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-                    {!loading && <Typography variant="caption" color="text.disabled">{itemCount} {t('config.items')}</Typography>}
-                    <IconButton size="small" onClick={() => loadFiles(currentPath)} disabled={loading} sx={{ color: 'text.secondary' }}>
-                        {loading ? <CircularProgress size={18} thickness={4} /> : <RefreshIcon fontSize="small" />}
+                    {!loading && <Typography variant="caption" sx={{ color: '#c084fc', fontWeight: 600, opacity: 0.7 }}>{itemCount} {t('config.items')}</Typography>}
+                    <IconButton size="small" onClick={() => loadFiles(currentPath)} disabled={loading}
+                        sx={{ color: '#c084fc', borderRadius: '10px', '&:hover': { bgcolor: 'rgba(192,132,252,0.15)', transform: 'rotate(180deg)' }, transition: 'all 0.4s' }}>
+                        {loading ? <CircularProgress size={18} thickness={4} sx={{ color: '#c084fc' }} /> : <RefreshIcon fontSize="small" />}
                     </IconButton>
                 </Box>
             </Box>
 
             {/* ── 文件列表容器 ── */}
             <Box sx={{
-                flex: 1, borderRadius: 2, border: `1px solid ${theme.palette.divider}`,
-                bgcolor: isDark ? 'rgba(255,255,255,0.01)' : '#fff', overflow: 'hidden',
-                display: 'flex', flexDirection: 'column',
+                flex: 1, borderRadius: '16px',
+                ...glassStyle,
+                boxShadow: isDark ? '0 8px 32px rgba(0,0,0,0.25)' : '0 8px 32px rgba(192,132,252,0.1)',
+                overflow: 'hidden', display: 'flex', flexDirection: 'column',
+                animation: 'fadeInUp 0.4s ease-out 0.1s both',
             }}>
                 {/* 列头 */}
                 <Box sx={{
                     display: 'grid', gridTemplateColumns: GRID_COLS, alignItems: 'center',
-                    px: 2, py: 1, bgcolor: isDark ? 'rgba(0,0,0,0.2)' : '#f8fafc',
-                    borderBottom: `1px solid ${theme.palette.divider}`,
+                    px: 2, py: 1,
+                    background: isDark ? 'rgba(192,132,252,0.08)' : 'rgba(192,132,252,0.06)',
+                    borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(192,132,252,0.15)'}`,
                 }}>
-                    <Typography variant="caption" fontWeight={600} color="text.secondary">{t('config.fileName')}</Typography>
-                    <Typography variant="caption" fontWeight={600} color="text.secondary">{t('config.fileSize')}</Typography>
-                    <Typography variant="caption" fontWeight={600} color="text.secondary">{t('config.lastModified')}</Typography>
+                    <Typography variant="caption" fontWeight={700} sx={{ color: '#c084fc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('config.fileName')}</Typography>
+                    <Typography variant="caption" fontWeight={700} sx={{ color: '#c084fc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('config.fileSize')}</Typography>
+                    <Typography variant="caption" fontWeight={700} sx={{ color: '#c084fc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('config.lastModified')}</Typography>
                     <Box />
                 </Box>
 
@@ -230,11 +242,11 @@ const FileManager: React.FC<FileManagerProps> = ({ name, node_id }) => {
                 <Box sx={{ flex: 1, overflowY: 'auto' }}>
                     {loading ? (
                         <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-                            <CircularProgress size={28} thickness={4} />
+                            <CircularProgress size={28} thickness={4} sx={{ color: '#c084fc' }} />
                         </Box>
                     ) : itemCount === 0 && !currentPath ? (
                         <Box sx={{ textAlign: 'center', py: 8 }}>
-                            <InsertDriveFileIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
+                            <InsertDriveFileIcon sx={{ fontSize: 48, color: '#c084fc', opacity: 0.3, mb: 1 }} />
                             <Typography variant="body2" color="text.secondary">{t('config.noFiles')}</Typography>
                         </Box>
                     ) : (
@@ -245,13 +257,13 @@ const FileManager: React.FC<FileManagerProps> = ({ name, node_id }) => {
                                     onClick={handleUpFolder}
                                     sx={{
                                         display: 'grid', gridTemplateColumns: GRID_COLS, alignItems: 'center',
-                                        px: 2, py: 1.2, cursor: 'pointer', transition: 'background 0.15s',
-                                        borderBottom: `1px solid ${theme.palette.divider}`,
+                                        px: 2, py: 1.2, cursor: 'pointer', transition: 'all 0.2s',
+                                        borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(192,132,252,0.08)'}`,
                                         '&:hover': { bgcolor: hoverBg },
                                     }}
                                 >
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                                        <ArrowBackIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                                        <ArrowBackIcon fontSize="small" sx={{ color: '#c084fc', opacity: 0.6 }} />
                                         <Typography variant="body2" color="text.secondary">..</Typography>
                                     </Box>
                                     <Box /><Box /><Box />
@@ -265,9 +277,9 @@ const FileManager: React.FC<FileManagerProps> = ({ name, node_id }) => {
                                     onClick={() => handleFolderClick(f.name)}
                                     sx={{
                                         display: 'grid', gridTemplateColumns: GRID_COLS, alignItems: 'center',
-                                        px: 2, py: 1.2, cursor: 'pointer', transition: 'background 0.15s',
-                                        borderBottom: `1px solid ${theme.palette.divider}`,
-                                        '&:hover': { bgcolor: hoverBg },
+                                        px: 2, py: 1.2, cursor: 'pointer', transition: 'all 0.2s',
+                                        borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(192,132,252,0.08)'}`,
+                                        '&:hover': { bgcolor: hoverBg, transform: 'translateX(4px)' },
                                     }}
                                 >
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
@@ -288,8 +300,8 @@ const FileManager: React.FC<FileManagerProps> = ({ name, node_id }) => {
                                         key={`f-${f.name}`}
                                         sx={{
                                             display: 'grid', gridTemplateColumns: GRID_COLS, alignItems: 'center',
-                                            px: 2, py: 1.2, transition: 'background 0.15s',
-                                            borderBottom: `1px solid ${theme.palette.divider}`,
+                                            px: 2, py: 1.2, transition: 'all 0.2s',
+                                            borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(192,132,252,0.08)'}`,
                                             '&:hover': { bgcolor: hoverBg },
                                             '&:last-child': { borderBottom: 'none' },
                                         }}
@@ -308,7 +320,7 @@ const FileManager: React.FC<FileManagerProps> = ({ name, node_id }) => {
                                             <IconButton
                                                 size="small"
                                                 onClick={() => handleEdit(f.name)}
-                                                sx={{ color: 'text.secondary', '&:hover': { color: '#3b82f6' } }}
+                                                sx={{ color: '#c084fc', opacity: 0.6, borderRadius: '8px', '&:hover': { color: '#ff6b9d', opacity: 1, bgcolor: 'rgba(255,107,157,0.1)' }, transition: 'all 0.2s' }}
                                             >
                                                 <EditIcon fontSize="small" />
                                             </IconButton>
@@ -328,19 +340,22 @@ const FileManager: React.FC<FileManagerProps> = ({ name, node_id }) => {
                 fullWidth
                 PaperProps={{
                     sx: {
-                        borderRadius: 3,
-                        bgcolor: theme.palette.mode === 'dark' ? 'rgba(30,30,30,0.98)' : 'rgba(255,255,255,0.98)',
-                        backdropFilter: 'blur(20px)',
-                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-                        border: `1px solid ${theme.palette.divider}`
+                        borderRadius: '24px',
+                        background: isDark ? 'rgba(15,15,26,0.92)' : 'rgba(255,255,255,0.92)',
+                        backdropFilter: 'blur(24px) saturate(150%)',
+                        WebkitBackdropFilter: 'blur(24px) saturate(150%)',
+                        boxShadow: '0 25px 60px rgba(0,0,0,0.3)',
+                        border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)'}`,
                     }
                 }}
             >
-                <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1.5, py: 2.5, borderBottom: `1px solid ${theme.palette.divider}` }}>
-                    <Box sx={{ p: 0.5, borderRadius: 1.5, bgcolor: 'rgba(99,102,241,0.1)', display: 'flex' }}>
-                        <InsertDriveFileIcon fontSize="small" sx={{ color: '#6366f1' }} />
+                <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1.5, py: 2.5, borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}` }}>
+                    <Box sx={{ p: 0.5, borderRadius: '10px', background: 'linear-gradient(135deg, rgba(192,132,252,0.2), rgba(96,165,250,0.2))', display: 'flex' }}>
+                        <InsertDriveFileIcon fontSize="small" sx={{ color: '#c084fc' }} />
                     </Box>
-                    {t('config.editFile')} / {editingFile}
+                    <Typography sx={{ fontWeight: 700, background: 'linear-gradient(135deg, #c084fc, #60a5fa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+                        {t('config.editFile')} / {editingFile}
+                    </Typography>
                 </DialogTitle>
                 <DialogContent sx={{ p: 0 }}>
                     <TextField
@@ -354,22 +369,22 @@ const FileManager: React.FC<FileManagerProps> = ({ name, node_id }) => {
                             '& .MuiOutlinedInput-root': {
                                 fontFamily: '"Fira Code", Consolas, monospace',
                                 fontSize: '0.85rem',
-                                bgcolor: theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.2)' : '#f8fafc',
+                                bgcolor: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(248,250,252,0.8)',
                                 borderRadius: 0,
                                 '& fieldset': { border: 'none' },
                                 p: 2,
-                                lineHeight: 1.6
+                                lineHeight: 1.6,
                             }
                         }}
                     />
                 </DialogContent>
-                <DialogActions sx={{ p: 2, borderTop: `1px solid ${theme.palette.divider}` }}>
-                    <Button onClick={() => setEditingFile(null)} color="inherit" sx={{ borderRadius: 2, fontWeight: 600 }}>{t('config.cancel')}</Button>
+                <DialogActions sx={{ p: 2, borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}` }}>
+                    <Button onClick={() => setEditingFile(null)} color="inherit" sx={{ borderRadius: '12px', fontWeight: 600 }}>{t('config.cancel')}</Button>
                     <Button
                         onClick={handleSaveFile}
                         disabled={savingFile}
                         variant="contained"
-                        sx={{ px: 4, borderRadius: 2, fontWeight: 600, background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', boxShadow: '0 4px 14px rgba(59,130,246,0.3)', textTransform: 'none' }}
+                        sx={{ px: 4, borderRadius: '12px', fontWeight: 700, textTransform: 'none', background: 'linear-gradient(135deg, #c084fc, #60a5fa)', boxShadow: '0 4px 16px rgba(192,132,252,0.4)', '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 8px 24px rgba(192,132,252,0.5)' }, transition: 'all 0.25s' }}
                     >
                         {savingFile ? t('config.saving') : t('config.saveChanges')}
                     </Button>
