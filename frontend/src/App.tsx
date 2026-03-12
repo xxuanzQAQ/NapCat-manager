@@ -24,28 +24,32 @@ const ScheduledTasks = lazy(() => import('./pages/ScheduledTasks'));
 export const ThemeModeContext = createContext({ toggleTheme: () => { } });
 export const LanguageContext = createContext({ language: 'zh', toggleLanguage: () => { } });
 
-// We define exact standard colors that match Napcat native
+// 二次元 ACG 主题配色
 const getDesignTokens = (mode: 'light' | 'dark') => ({
   palette: {
     mode,
     ...(mode === 'light'
       ? {
-        primary: { main: '#3b82f6' },
-        background: { default: '#f3f4f6', paper: '#ffffff' },
-        text: { primary: '#1f2937', secondary: '#4b5563' },
+        primary: { main: '#c084fc', light: '#e0b4fe', dark: '#a855f7' },
+        secondary: { main: '#ff6b9d' },
+        background: { default: 'transparent', paper: 'rgba(255,255,255,0.15)' },
+        text: { primary: '#1f2937', secondary: '#6b7280' },
       }
       : {
-        primary: { main: '#3b82f6' },
-        background: { default: '#1e1e1e', paper: '#252526' },
-        text: { primary: '#e5e7eb', secondary: '#9ca3af' },
+        primary: { main: '#c084fc', light: '#e0b4fe', dark: '#a855f7' },
+        secondary: { main: '#ff6b9d' },
+        background: { default: 'transparent', paper: 'rgba(30,30,46,0.4)' },
+        text: { primary: '#f0e6ff', secondary: '#a5b4c8' },
       }),
   },
   typography: { fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif' },
+  shape: { borderRadius: 16 },
   components: {
-    MuiPaper: { styleOverrides: { root: { backgroundImage: 'none' } } },
+    MuiPaper: { styleOverrides: { root: { backgroundImage: 'none', backdropFilter: 'blur(20px) saturate(150%)', WebkitBackdropFilter: 'blur(20px) saturate(150%)' } } },
     MuiDrawer: { styleOverrides: { paper: { borderRight: 'none' } } },
-    MuiButton: { styleOverrides: { root: { textTransform: 'none', borderRadius: '8px' } } },
-    MuiTab: { styleOverrides: { root: { textTransform: 'none', fontWeight: 600 } } }
+    MuiButton: { styleOverrides: { root: { textTransform: 'none' as const, borderRadius: '16px', fontWeight: 600 } } },
+    MuiTab: { styleOverrides: { root: { textTransform: 'none' as const, fontWeight: 600 } } },
+    MuiDialog: { styleOverrides: { paper: { borderRadius: '24px', backdropFilter: 'blur(20px) saturate(150%)' } } },
   },
 });
 

@@ -265,63 +265,123 @@ export default function Dashboard() {
         } catch (e) { toast.error(String(e)); }
     };
 
+    const isDark = theme.palette.mode === 'dark';
+
     return (
         <Box sx={{ p: { xs: 3, md: 6 }, pt: 2, maxWidth: 1200, mx: 'auto' }}>
-            {/* Fleet Title and Top Right Actions */}
+            {/* Fleet Title */}
             <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.secondary', fontSize: '0.75rem', letterSpacing: '0.05em' }}>
-                        {t('admin.instances').toUpperCase()}
-                    </Typography>
-                </Box>
+                <Typography variant="subtitle2" className="acg-subtitle" sx={{
+                    fontWeight: 700, fontSize: '0.75rem', letterSpacing: '0.05em',
+                    color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)',
+                }}>
+                    {t('admin.instances').toUpperCase()}
+                </Typography>
                 <Button
-                    variant="text"
-                    size="small"
+                    variant="text" size="small"
                     onClick={() => navigate('/admin/cluster-settings')}
                     startIcon={<SettingsIcon fontSize="small" />}
-                    sx={{ color: 'primary.main', fontWeight: 600, fontSize: '0.75rem', '&:hover': { bgcolor: 'rgba(37,99,235,0.05)' } }}
+                    sx={{
+                        color: '#c084fc', fontWeight: 600, fontSize: '0.75rem',
+                        borderRadius: '12px',
+                        '&:hover': { bgcolor: 'rgba(192,132,252,0.08)' },
+                    }}
                 >
                     {t('admin.instanceSettings')}
                 </Button>
             </Box>
 
-            {/* Header Toolbar */}
-            <Box sx={{ mb: 4, display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'space-between', alignItems: 'center' }}>
+            {/* Header Toolbar - 毛玻璃 */}
+            <Box sx={{
+                mb: 4, display: 'flex', flexWrap: 'wrap', gap: 2,
+                justifyContent: 'space-between', alignItems: 'center',
+                p: 2, borderRadius: '20px',
+                background: isDark ? 'rgba(30,30,46,0.35)' : 'rgba(255,255,255,0.25)',
+                backdropFilter: 'blur(16px) saturate(140%)',
+                border: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(255,255,255,0.4)',
+                boxShadow: isDark
+                    ? '0 4px 16px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.03)'
+                    : '0 4px 16px rgba(192,132,252,0.05), inset 0 1px 0 rgba(255,255,255,0.4)',
+            }}>
                 <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
                     {isBatchMode ? (
                         <>
-                            <Button variant="outlined" color="primary" onClick={handleSelectAll} disabled={!!batchProgress} sx={{ borderRadius: 2, height: 38 }}>
+                            <Button variant="outlined" onClick={handleSelectAll} disabled={!!batchProgress} sx={{
+                                borderRadius: '14px', height: 38,
+                                borderColor: 'rgba(192,132,252,0.3)', color: '#c084fc',
+                                '&:hover': { borderColor: '#c084fc', background: 'rgba(192,132,252,0.08)' },
+                            }}>
                                 {selectedContainers.length === containers.length ? t('admin.deselectAll') : t('admin.selectAll')}
                             </Button>
-                            <Button variant="outlined" color="inherit" onClick={() => setIsBatchMode(false)} disabled={!!batchProgress} sx={{ borderRadius: 2, height: 38 }}>
+                            <Button variant="outlined" onClick={() => setIsBatchMode(false)} disabled={!!batchProgress} sx={{
+                                borderRadius: '14px', height: 38,
+                                borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)',
+                                color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)',
+                            }}>
                                 {t('admin.cancelText')}
                             </Button>
-                            <Button variant="contained" color="success" onClick={() => handleBatchAction('start')} disabled={selectedContainers.length === 0 || !!batchProgress} sx={{ borderRadius: 2, height: 38 }}>
+                            <Button variant="contained" onClick={() => handleBatchAction('start')} disabled={selectedContainers.length === 0 || !!batchProgress} sx={{
+                                borderRadius: '14px', height: 38,
+                                background: 'linear-gradient(135deg, #10b981, #059669)',
+                                '&:hover': { background: 'linear-gradient(135deg, #059669, #047857)' },
+                            }}>
                                 {t('admin.start')}
                             </Button>
-                            <Button variant="contained" color="warning" onClick={() => handleBatchAction('stop')} disabled={selectedContainers.length === 0 || !!batchProgress} sx={{ borderRadius: 2, height: 38 }}>
+                            <Button variant="contained" onClick={() => handleBatchAction('stop')} disabled={selectedContainers.length === 0 || !!batchProgress} sx={{
+                                borderRadius: '14px', height: 38,
+                                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                                '&:hover': { background: 'linear-gradient(135deg, #d97706, #b45309)' },
+                            }}>
                                 {t('admin.stop')}
                             </Button>
-                            <Button variant="contained" color="error" onClick={() => handleBatchAction('delete')} disabled={selectedContainers.length === 0 || !!batchProgress} sx={{ borderRadius: 2, height: 38 }}>
+                            <Button variant="contained" onClick={() => handleBatchAction('delete')} disabled={selectedContainers.length === 0 || !!batchProgress} sx={{
+                                borderRadius: '14px', height: 38,
+                                background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                                '&:hover': { background: 'linear-gradient(135deg, #dc2626, #b91c1c)' },
+                            }}>
                                 {t('admin.deleteText')}
                             </Button>
                             {batchProgress ? (
-                                <Typography variant="body2" sx={{ ml: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    <CircularProgress size={16} /> {batchProgress.done}/{batchProgress.total} ({batchProgress.ok} ✓)
+                                <Typography variant="body2" sx={{ ml: 1, display: 'flex', alignItems: 'center', gap: 1, color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)' }}>
+                                    <CircularProgress size={16} sx={{ color: '#c084fc' }} /> {batchProgress.done}/{batchProgress.total} ({batchProgress.ok} ✓)
                                 </Typography>
                             ) : (
-                                <Typography variant="body2" sx={{ ml: 1 }}>{t('admin.selected').replace('{count}', String(selectedContainers.length))}</Typography>
+                                <Typography variant="body2" sx={{ ml: 1, color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)' }}>
+                                    {t('admin.selected').replace('{count}', String(selectedContainers.length))}
+                                </Typography>
                             )}
                         </>
                     ) : (
-                        <Button variant="outlined" color="inherit" onClick={() => setIsBatchMode(true)} sx={{ borderRadius: 2, height: 38, fontSize: '0.875rem', color: 'text.primary', borderColor: theme.palette.divider, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : '#fff', whiteSpace: 'nowrap' }}>
+                        <Button variant="outlined" onClick={() => setIsBatchMode(true)} sx={{
+                            borderRadius: '14px', height: 38, fontSize: '0.875rem', whiteSpace: 'nowrap',
+                            color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)',
+                            borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+                            background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.4)',
+                            backdropFilter: 'blur(8px)',
+                            '&:hover': { borderColor: '#c084fc', background: 'rgba(192,132,252,0.08)' },
+                        }}>
                             {t('admin.batchOps')}
                         </Button>
                     )}
-                    <IconButton onClick={() => { fetchContainers(); fetchStats(); }} sx={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 2, height: 38, width: 38, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : '#fff' }}>
+                    <IconButton onClick={() => { fetchContainers(); fetchStats(); }} sx={{
+                        borderRadius: '14px', height: 38, width: 38,
+                        border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
+                        background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.4)',
+                        color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)',
+                        '&:hover': { background: 'rgba(192,132,252,0.1)', color: '#c084fc' },
+                    }}>
                         <RefreshIcon fontSize="small" />
                     </IconButton>
-                    <Button variant="contained" onClick={openCreateDialog} startIcon={<AddIcon />} sx={{ borderRadius: 2, background: '#2563eb', height: 38, px: 3, fontSize: '0.875rem', whiteSpace: 'nowrap', boxShadow: 'none', '&:hover': { background: '#1d4ed8', boxShadow: 'none' } }}>
+                    <Button variant="contained" onClick={openCreateDialog} startIcon={<AddIcon />}
+                        className="acg-btn" sx={{
+                            borderRadius: '14px', height: 38, px: 3, fontSize: '0.875rem', whiteSpace: 'nowrap',
+                            background: 'linear-gradient(135deg, #ff6b9d 0%, #c084fc 50%, #60a5fa 100%)',
+                            boxShadow: '0 4px 16px rgba(192,132,252,0.3)',
+                            '&:hover': {
+                                background: 'linear-gradient(135deg, #ff6b9d 0%, #c084fc 50%, #60a5fa 100%)',
+                                boxShadow: '0 6px 20px rgba(255,107,157,0.3)',
+                            },
+                        }}>
                         {t('admin.newInstance')}
                     </Button>
                 </Box>
@@ -335,17 +395,32 @@ export default function Dashboard() {
                         InputProps={{
                             startAdornment: (
                                 <InputAdornment position="start">
-                                    <SearchIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+                                    <SearchIcon sx={{ fontSize: 18, color: '#c084fc' }} />
                                 </InputAdornment>
                             ),
                         }}
-                        sx={{ width: { xs: 160, sm: 220 }, '& .MuiOutlinedInput-root': { height: 38, borderRadius: 2, fontSize: '0.875rem', bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : '#fff' } }}
+                        sx={{
+                            width: { xs: 160, sm: 220 },
+                            '& .MuiOutlinedInput-root': {
+                                height: 38, borderRadius: '14px', fontSize: '0.875rem',
+                                background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.5)',
+                                backdropFilter: 'blur(8px)',
+                                '& fieldset': { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(192,132,252,0.15)' },
+                                '&:hover fieldset': { borderColor: '#c084fc' },
+                            },
+                        }}
                     />
                     <Select
                         size="small"
                         value={selectedNode}
                         onChange={(e) => setSelectedNode(e.target.value)}
-                        sx={{ minWidth: 220, height: 38, borderRadius: 2, fontSize: '0.875rem', borderColor: theme.palette.divider, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : '#fff' }}
+                        sx={{
+                            minWidth: 220, height: 38, borderRadius: '14px', fontSize: '0.875rem',
+                            background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.5)',
+                            backdropFilter: 'blur(8px)',
+                            '& fieldset': { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(192,132,252,0.15)' },
+                            '&:hover fieldset': { borderColor: '#c084fc' },
+                        }}
                     >
                         <MenuItem value="all">
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -355,7 +430,7 @@ export default function Dashboard() {
                         {nodes.map((node) => (
                             <MenuItem key={node.id} value={node.id}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: node.status === 'online' ? '#10b981' : '#f43f5e' }} />
+                                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: node.status === 'online' ? '#10b981' : '#f43f5e', boxShadow: node.status === 'online' ? '0 0 6px #10b981' : '0 0 6px #f43f5e' }} />
                                     {node.name} - {node.address}
                                 </Box>
                             </MenuItem>
@@ -365,23 +440,61 @@ export default function Dashboard() {
             </Box>
 
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 3 }}>
-                {loading ? [...Array(3)].map((_, i) => <Skeleton key={i} variant="rounded" height={200} sx={{ bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', borderRadius: 3 }} />)
+                {loading ? [...Array(3)].map((_, i) => <Skeleton key={i} variant="rounded" height={200} sx={{
+                    bgcolor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(192,132,252,0.05)',
+                    borderRadius: '24px',
+                    animation: 'pulseGlow 2s ease-in-out infinite',
+                }} />)
                     : filteredContainers.length === 0 ? (
-                        <Box sx={{ gridColumn: '1 / -1', p: 8, textAlign: 'center', borderRadius: 3, border: `1px dashed ${theme.palette.divider}`, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)' }}>
-                            <Typography color="text.secondary">{searchQuery ? t('admin.noSearchResults') : t('admin.noEnv')}</Typography>
+                        <Box sx={{
+                            gridColumn: '1 / -1', p: 8, textAlign: 'center',
+                            borderRadius: '24px',
+                            border: isDark ? '1px dashed rgba(255,255,255,0.08)' : '1px dashed rgba(192,132,252,0.2)',
+                            background: isDark ? 'rgba(30,30,46,0.3)' : 'rgba(255,255,255,0.2)',
+                            backdropFilter: 'blur(12px)',
+                        }}>
+                            <Typography sx={{ color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)' }}>
+                                {searchQuery ? t('admin.noSearchResults') : t('admin.noEnv')}
+                            </Typography>
                         </Box>
-                    ) : displayedContainers.map(c => (
+                    ) : displayedContainers.map((c, cardIdx) => (
                         <Box key={c.id} onClick={(e) => {
-                            if (isBatchMode) {
-                                e.stopPropagation();
-                                handleBatchSelect(c.name);
-                            } else {
-                                navigate(`/admin/config/${c.node_id}/${c.name}`);
-                            }
-                        }} sx={{ position: 'relative', cursor: 'pointer', borderRadius: 3, background: theme.palette.mode === 'dark' ? 'rgba(45, 45, 50, 0.4)' : '#fff', border: `1px solid ${selectedContainers.includes(c.name) ? '#3b82f6' : theme.palette.divider}`, overflow: 'hidden', transition: 'all 0.3s', '&:hover': { border: '1px solid rgba(59,130,246,0.5)', boxShadow: '0 8px 24px rgba(0,0,0,0.1)' } }}>
+                            if (isBatchMode) { e.stopPropagation(); handleBatchSelect(c.name); }
+                            else { navigate(`/admin/config/${c.node_id}/${c.name}`); }
+                        }} sx={{
+                            position: 'relative', cursor: 'pointer',
+                            borderRadius: '22px', overflow: 'hidden',
+                            background: isDark ? 'rgba(30,30,46,0.45)' : 'rgba(255,255,255,0.3)',
+                            backdropFilter: 'blur(20px) saturate(150%)',
+                            WebkitBackdropFilter: 'blur(20px) saturate(150%)',
+                            border: `1px solid ${selectedContainers.includes(c.name) ? '#c084fc' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.45)')}`,
+                            transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                            animation: `fadeInUp 0.5s ease-out ${cardIdx * 0.05}s both`,
+                            boxShadow: isDark
+                                ? '0 4px 20px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.04)'
+                                : '0 4px 20px rgba(192,132,252,0.06), inset 0 1px 0 rgba(255,255,255,0.5)',
+                            '&:hover': {
+                                transform: 'translateY(-4px)',
+                                borderColor: '#c084fc',
+                                boxShadow: isDark
+                                    ? '0 16px 48px rgba(192,132,252,0.15), 0 8px 24px rgba(255,107,157,0.08), inset 0 1px 0 rgba(255,255,255,0.06)'
+                                    : '0 16px 48px rgba(192,132,252,0.12), 0 8px 24px rgba(255,107,157,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
+                            },
+                            // 顶部渐变装饰线
+                            '&::before': {
+                                content: '""', position: 'absolute', top: 0, left: '10%', right: '10%', height: '2px',
+                                background: c.status === 'running' && c.qq_logged_in !== false
+                                    ? 'linear-gradient(90deg, transparent, #10b981, #22d3ee, transparent)'
+                                    : c.status === 'running'
+                                        ? 'linear-gradient(90deg, transparent, #f59e0b, #f97316, transparent)'
+                                        : 'linear-gradient(90deg, transparent, #ff6b9d, #c084fc, #60a5fa, transparent)',
+                                opacity: 0.6, borderRadius: '2px',
+                            },
+                        }}>
                             {isBatchMode && (
                                 <Box sx={{ position: 'absolute', top: 16, right: 16, zIndex: 10 }}>
-                                    <Checkbox checked={selectedContainers.includes(c.name)} onChange={() => handleBatchSelect(c.name)} onClick={e => e.stopPropagation()} />
+                                    <Checkbox checked={selectedContainers.includes(c.name)} onChange={() => handleBatchSelect(c.name)} onClick={e => e.stopPropagation()}
+                                        sx={{ color: '#c084fc', '&.Mui-checked': { color: '#c084fc' } }} />
                                 </Box>
                             )}
                             <Box sx={{ p: 3 }}>
@@ -390,32 +503,73 @@ export default function Dashboard() {
                                         {(() => {
                                             const uin = c.uin || statsMap[c.name]?.uin;
                                             return uin && uin !== '未登录 / Not Logged In' ? (
-                                                <Box component="img" src={`https://q1.qlogo.cn/g?b=qq&nk=${String(uin).replace(/\D/g, '')}&s=640`} sx={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
+                                                <Box component="img" src={`https://q1.qlogo.cn/g?b=qq&nk=${String(uin).replace(/\D/g, '')}&s=640`}
+                                                    sx={{
+                                                        width: 40, height: 40, borderRadius: '50%', objectFit: 'cover',
+                                                        border: '2px solid rgba(192,132,252,0.3)',
+                                                        boxShadow: '0 0 10px rgba(192,132,252,0.2)',
+                                                    }} />
                                             ) : (
-                                                <Box sx={{ width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                                                <Box sx={{
+                                                    width: 40, height: 40, borderRadius: '50%',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                                                    background: 'linear-gradient(135deg, rgba(255,107,157,0.1), rgba(192,132,252,0.1))',
+                                                    border: '2px solid rgba(192,132,252,0.15)',
+                                                }}>
                                                     <NapCatIcon sx={{ fontSize: 36 }} />
                                                 </Box>
                                             );
                                         })()}
                                     </Box>
                                     {c.status === 'running' && c.qq_logged_in !== false ? (
-                                        <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 0.25, borderRadius: 8, bgcolor: 'rgba(16,185,129,0.1)', color: '#059669', border: '1px solid rgba(16,185,129,0.2)', fontWeight: 600, mr: isBatchMode ? 4 : 0 }}>
-                                            <Box sx={{ width: 6, height: 6, bgcolor: '#10b981', borderRadius: '50%' }} /> {t('admin.online')}
+                                        <Typography variant="caption" sx={{
+                                            display: 'flex', alignItems: 'center', gap: 0.5,
+                                            px: 1.5, py: 0.5, borderRadius: '12px',
+                                            bgcolor: 'rgba(16,185,129,0.1)', color: '#10b981',
+                                            border: '1px solid rgba(16,185,129,0.2)',
+                                            fontWeight: 700, mr: isBatchMode ? 4 : 0,
+                                            textShadow: '0 0 6px rgba(16,185,129,0.3)',
+                                        }}>
+                                            <Box sx={{ width: 6, height: 6, bgcolor: '#10b981', borderRadius: '50%', boxShadow: '0 0 6px #10b981' }} /> {t('admin.online')}
                                         </Typography>
                                     ) : c.status === 'running' && c.qq_logged_in === false ? (
-                                        <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 0.25, borderRadius: 8, bgcolor: 'rgba(245,158,11,0.1)', color: '#d97706', border: '1px solid rgba(245,158,11,0.2)', fontWeight: 600, mr: isBatchMode ? 4 : 0 }}>
-                                            <Box sx={{ width: 6, height: 6, bgcolor: '#f59e0b', borderRadius: '50%' }} /> 待登录
+                                        <Typography variant="caption" sx={{
+                                            display: 'flex', alignItems: 'center', gap: 0.5,
+                                            px: 1.5, py: 0.5, borderRadius: '12px',
+                                            bgcolor: 'rgba(245,158,11,0.1)', color: '#f59e0b',
+                                            border: '1px solid rgba(245,158,11,0.2)',
+                                            fontWeight: 700, mr: isBatchMode ? 4 : 0,
+                                        }}>
+                                            <Box sx={{ width: 6, height: 6, bgcolor: '#f59e0b', borderRadius: '50%', boxShadow: '0 0 6px #f59e0b' }} /> 待登录
                                         </Typography>
                                     ) : (
-                                        <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 0.25, borderRadius: 8, bgcolor: 'rgba(100,116,139,0.1)', color: theme.palette.text.secondary, border: '1px solid rgba(100,116,139,0.2)', fontWeight: 600, mr: isBatchMode ? 4 : 0 }}>
+                                        <Typography variant="caption" sx={{
+                                            display: 'flex', alignItems: 'center', gap: 0.5,
+                                            px: 1.5, py: 0.5, borderRadius: '12px',
+                                            bgcolor: isDark ? 'rgba(100,116,139,0.1)' : 'rgba(100,116,139,0.08)',
+                                            color: isDark ? 'rgba(255,255,255,0.4)' : '#64748b',
+                                            border: '1px solid rgba(100,116,139,0.15)',
+                                            fontWeight: 700, mr: isBatchMode ? 4 : 0,
+                                        }}>
                                             <Box sx={{ width: 6, height: 6, bgcolor: '#64748b', borderRadius: '50%' }} /> {c.status.toUpperCase()}
                                         </Typography>
                                     )}
                                 </Box>
-                                <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, color: 'text.primary' }} noWrap>{highlight(c.name)}</Typography>
-                                <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>ID: {c.id}</Typography>
+                                <Typography variant="h6" sx={{
+                                    fontWeight: 800, mb: 0.5, fontSize: '1.05rem',
+                                    color: isDark ? '#f0e6ff' : '#1f2937',
+                                    textShadow: isDark ? '0 1px 4px rgba(0,0,0,0.3)' : 'none',
+                                }} noWrap>{highlight(c.name)}</Typography>
+                                <Typography variant="caption" sx={{
+                                    fontFamily: 'monospace', fontSize: '0.7rem',
+                                    color: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)',
+                                }}>ID: {c.id}</Typography>
                                 {statsMap[c.name] && c.status === 'running' && (
-                                    <Typography variant="caption" sx={{ mt: 0.5, display: 'block', color: 'text.secondary', fontFamily: 'monospace', fontSize: '0.7rem' }}>
+                                    <Typography variant="caption" sx={{
+                                        mt: 0.5, display: 'block',
+                                        fontFamily: 'monospace', fontSize: '0.7rem',
+                                        color: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)',
+                                    }}>
                                         CPU {statsMap[c.name].cpu_percent.toFixed(1)}% · {t('admin.memory')} {statsMap[c.name].mem_usage}MB{statsMap[c.name].mem_limit > 0 ? `/${statsMap[c.name].mem_limit}MB` : ''}
                                     </Typography>
                                 )}
@@ -426,18 +580,29 @@ export default function Dashboard() {
                                 const loadingAction = actionLoading.split(':')[1];
                                 const btn = (action: string, icon: React.ReactNode, color: string) => (
                                     <IconButton size="small" disabled={isLoading} onClick={(e) => handleAction(e, c.name, action, c.node_id)}
-                                        sx={{ color, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#fff', border: `1px solid ${theme.palette.divider}` }}>
+                                        sx={{
+                                            color,
+                                            background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.5)',
+                                            border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.06)',
+                                            borderRadius: '12px',
+                                            transition: 'all 0.3s ease',
+                                            '&:hover': { transform: 'scale(1.1)', background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.7)' },
+                                        }}>
                                         {isLoading && loadingAction === action ? <CircularProgress size={16} /> : icon}
                                     </IconButton>
                                 );
                                 return (
-                                <Box sx={{ bgcolor: theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.3)' : '#f8fafc', borderTop: `1px solid ${theme.palette.divider}`, p: 2, display: 'flex', justifyContent: 'space-between' }}>
+                                <Box sx={{
+                                    borderTop: isDark ? '1px solid rgba(255,255,255,0.04)' : '1px solid rgba(192,132,252,0.08)',
+                                    background: isDark ? 'rgba(15,15,26,0.3)' : 'rgba(255,255,255,0.2)',
+                                    p: 2, display: 'flex', justifyContent: 'space-between',
+                                }}>
                                     <Box sx={{ display: 'flex', gap: 1 }}>
                                         {c.status === 'running' && (
                                             <>
                                                 {btn('pause', <PauseIcon fontSize="small" />, '#f59e0b')}
                                                 {btn('stop', <StopIcon fontSize="small" />, '#ef4444')}
-                                                {btn('restart', <RefreshIcon fontSize="small" />, '#3b82f6')}
+                                                {btn('restart', <RefreshIcon fontSize="small" />, '#c084fc')}
                                                 {btn('kill', <PowerSettingsNewIcon fontSize="small" />, '#b91c1c')}
                                             </>
                                         )}
@@ -461,22 +626,40 @@ export default function Dashboard() {
             </Box>
 
             {totalPages > 1 && (
-                <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-                    <Pagination
-                        count={totalPages}
-                        page={page}
-                        onChange={(_, value) => setPage(value)}
-                        color="primary"
-                        shape="rounded"
-                    />
+                <Box sx={{
+                    display: 'flex', justifyContent: 'center', mt: 4,
+                    '& .MuiPaginationItem-root': {
+                        borderRadius: '12px',
+                        backdropFilter: 'blur(8px)',
+                        background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.3)',
+                        border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(255,255,255,0.4)',
+                        '&.Mui-selected': {
+                            background: 'linear-gradient(135deg, #ff6b9d, #c084fc)',
+                            color: '#fff', fontWeight: 700,
+                            boxShadow: '0 2px 8px rgba(192,132,252,0.3)',
+                        },
+                    },
+                }}>
+                    <Pagination count={totalPages} page={page} onChange={(_, value) => setPage(value)} color="primary" shape="rounded" />
                 </Box>
             )}
 
-            {/* 创建实例对话框 - 简洁版 */}
-            <Dialog open={openCreate} onClose={() => setOpenCreate(false)} PaperProps={{ sx: { borderRadius: 3, p: 1, minWidth: 420 } }}>
-                <DialogTitle sx={{ fontWeight: 700 }}>{t('admin.createInstance')}</DialogTitle>
+            {/* 创建实例对话框 - 毛玻璃风格 */}
+            <Dialog open={openCreate} onClose={() => setOpenCreate(false)} PaperProps={{ sx: {
+                borderRadius: '28px', p: 1, minWidth: 420,
+                background: isDark ? 'rgba(30,30,46,0.8)' : 'rgba(255,255,255,0.6)',
+                backdropFilter: 'blur(24px) saturate(150%)',
+                border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(255,255,255,0.5)',
+                boxShadow: isDark ? '0 24px 64px rgba(0,0,0,0.5)' : '0 24px 64px rgba(192,132,252,0.15)',
+            } }}>
+                <DialogTitle className="acg-title-sm" sx={{
+                    fontWeight: 800, fontSize: '1.1rem',
+                    WebkitTextStroke: '0.3px rgba(192,132,252,0.4)',
+                }}>{t('admin.createInstance')}</DialogTitle>
                 <DialogContent>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    <Typography variant="body2" sx={{
+                        mb: 2, color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.45)',
+                    }}>
                         {t('admin.createHint')}
                     </Typography>
                     <TextField
@@ -484,15 +667,27 @@ export default function Dashboard() {
                         placeholder="ncqq-bot-1"
                         value={createForm.name}
                         onChange={e => setCreateForm({ ...createForm, name: e.target.value })}
-                        sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                        sx={{
+                            mb: 2,
+                            '& .MuiOutlinedInput-root': {
+                                borderRadius: '14px',
+                                background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.4)',
+                                '& fieldset': { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(192,132,252,0.2)' },
+                                '&:hover fieldset': { borderColor: '#c084fc' },
+                            },
+                        }}
                     />
                     {nodes.length > 1 && (
                         <Select fullWidth size="small" value={selectedNode} onChange={e => setSelectedNode(e.target.value)}
-                            sx={{ mb: 2, borderRadius: 2 }}>
+                            sx={{
+                                mb: 2, borderRadius: '14px',
+                                background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.4)',
+                                '& fieldset': { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(192,132,252,0.2)' },
+                            }}>
                             {nodes.map((n) => (
                                 <MenuItem key={n.id} value={n.id}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: n.status === 'online' ? '#10b981' : '#f43f5e' }} />
+                                        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: n.status === 'online' ? '#10b981' : '#f43f5e', boxShadow: n.status === 'online' ? '0 0 6px #10b981' : '0 0 6px #f43f5e' }} />
                                         {n.name}
                                     </Box>
                                 </MenuItem>
@@ -503,33 +698,57 @@ export default function Dashboard() {
                         <Select fullWidth size="small" displayEmpty
                             value={createForm.docker_image}
                             onChange={e => setCreateForm({ ...createForm, docker_image: e.target.value })}
-                            sx={{ mb: 2, borderRadius: 2 }}>
+                            sx={{
+                                mb: 2, borderRadius: '14px',
+                                background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.4)',
+                                '& fieldset': { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(192,132,252,0.2)' },
+                            }}>
                             <MenuItem value="">{t('imageManager.useDefault')}</MenuItem>
                             {localImages.flatMap(img => img.tags.map(tag => (
                                 <MenuItem key={tag} value={tag}>{tag}</MenuItem>
                             )))}
                         </Select>
                     )}
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" sx={{ color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)' }}>
                         {t('admin.dataDir').replace('{name}', createForm.name || '<name>')}
                     </Typography>
                 </DialogContent>
                 <DialogActions sx={{ p: 2, pt: 0 }}>
-                    <Button onClick={() => setOpenCreate(false)} color="inherit" sx={{ borderRadius: 2 }}>{t('admin.cancelText')}</Button>
+                    <Button onClick={() => setOpenCreate(false)} sx={{
+                        borderRadius: '14px',
+                        color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)',
+                    }}>{t('admin.cancelText')}</Button>
                     <Button onClick={handleCreate} disabled={!createForm.name} variant="contained" disableElevation
-                        sx={{ borderRadius: 2, background: '#2563eb' }}>{t('admin.quickCreate')}</Button>
+                        className="acg-btn" sx={{
+                            borderRadius: '14px',
+                            background: 'linear-gradient(135deg, #ff6b9d, #c084fc, #60a5fa)',
+                            boxShadow: '0 4px 12px rgba(192,132,252,0.3)',
+                            '&:hover': {
+                                background: 'linear-gradient(135deg, #ff6b9d, #c084fc, #60a5fa)',
+                                boxShadow: '0 6px 16px rgba(255,107,157,0.3)',
+                            },
+                        }}>{t('admin.quickCreate')}</Button>
                 </DialogActions>
             </Dialog>
 
-            {/* 删除确认对话框 - 二次确认 + 可选删除数据 */}
+            {/* 删除确认对话框 */}
             <Dialog open={deleteDialog.open} onClose={() => setDeleteDialog({ ...deleteDialog, open: false })}
-                PaperProps={{ sx: { borderRadius: 3, p: 1, minWidth: 420 } }}>
-                <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <WarningAmberIcon sx={{ color: '#ef4444' }} />
+                PaperProps={{ sx: {
+                    borderRadius: '28px', p: 1, minWidth: 420,
+                    background: isDark ? 'rgba(30,30,46,0.8)' : 'rgba(255,255,255,0.6)',
+                    backdropFilter: 'blur(24px) saturate(150%)',
+                    border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(255,255,255,0.5)',
+                    boxShadow: isDark ? '0 24px 64px rgba(0,0,0,0.5)' : '0 24px 64px rgba(239,68,68,0.1)',
+                } }}>
+                <DialogTitle sx={{
+                    fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1,
+                    color: isDark ? '#f0e6ff' : '#1f2937',
+                }}>
+                    <WarningAmberIcon sx={{ color: '#ef4444', filter: 'drop-shadow(0 0 6px rgba(239,68,68,0.4))' }} />
                     {t('admin.confirmDeleteInstance')}
                 </DialogTitle>
                 <DialogContent>
-                    <Typography variant="body2" sx={{ mb: 2 }}>
+                    <Typography variant="body2" sx={{ mb: 2, color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)' }}>
                         <span dangerouslySetInnerHTML={{ __html: t('admin.deleteInstanceMsg').replace('{name}', deleteDialog.name) }} />
                     </Typography>
                     <FormControlLabel
@@ -537,13 +756,13 @@ export default function Dashboard() {
                             <Checkbox
                                 checked={deleteDialog.deleteData}
                                 onChange={e => setDeleteDialog({ ...deleteDialog, deleteData: e.target.checked })}
-                                color="error"
+                                sx={{ color: '#ef4444', '&.Mui-checked': { color: '#ef4444' } }}
                             />
                         }
                         label={
                             <Box>
-                                <Typography variant="body2" sx={{ fontWeight: 600 }}>{t('admin.deleteWithData')}</Typography>
-                                <Typography variant="caption" color="text.secondary">
+                                <Typography variant="body2" sx={{ fontWeight: 600, color: isDark ? '#f0e6ff' : '#1f2937' }}>{t('admin.deleteWithData')}</Typography>
+                                <Typography variant="caption" sx={{ color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)' }}>
                                     {t('admin.deleteDataWarning').replace('{name}', deleteDialog.name)}
                                 </Typography>
                             </Box>
@@ -551,8 +770,19 @@ export default function Dashboard() {
                     />
                 </DialogContent>
                 <DialogActions sx={{ p: 2, pt: 0 }}>
-                    <Button onClick={() => setDeleteDialog({ ...deleteDialog, open: false })} color="inherit" sx={{ borderRadius: 2 }}>{t('admin.cancelText')}</Button>
-                    <Button onClick={confirmDelete} variant="contained" color="error" disableElevation sx={{ borderRadius: 2 }}>
+                    <Button onClick={() => setDeleteDialog({ ...deleteDialog, open: false })} sx={{
+                        borderRadius: '14px',
+                        color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)',
+                    }}>{t('admin.cancelText')}</Button>
+                    <Button onClick={confirmDelete} variant="contained" disableElevation sx={{
+                        borderRadius: '14px',
+                        background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                        boxShadow: '0 4px 12px rgba(239,68,68,0.3)',
+                        '&:hover': {
+                            background: 'linear-gradient(135deg, #dc2626, #b91c1c)',
+                            boxShadow: '0 6px 16px rgba(239,68,68,0.4)',
+                        },
+                    }}>
                         {deleteDialog.deleteData ? t('admin.deleteInstanceAndData') : t('admin.deleteInstanceOnly')}
                     </Button>
                 </DialogActions>

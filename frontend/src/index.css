@@ -2,9 +2,226 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================
+   二次元 ACG 主题 — 全局样式系统
+   ============================================ */
+
+:root {
+  /* ── 主色系（高饱和二次元渐变） ── */
+  --acg-pink: #ff6b9d;
+  --acg-purple: #c084fc;
+  --acg-blue: #60a5fa;
+  --acg-cyan: #22d3ee;
+  --acg-gradient-primary: linear-gradient(135deg, #ff6b9d 0%, #c084fc 50%, #60a5fa 100%);
+  --acg-gradient-warm: linear-gradient(135deg, #fbbf24 0%, #f97316 50%, #ef4444 100%);
+  --acg-gradient-cool: linear-gradient(135deg, #22d3ee 0%, #818cf8 50%, #c084fc 100%);
+  --acg-gradient-card: linear-gradient(135deg, rgba(255,107,157,0.08), rgba(192,132,252,0.08), rgba(96,165,250,0.08));
+
+  /* ── 毛玻璃参数 ── */
+  --glass-blur: blur(20px) saturate(150%);
+  --glass-bg-light: rgba(255, 255, 255, 0.25);
+  --glass-bg-dark: rgba(30, 30, 46, 0.45);
+  --glass-border-light: 1px solid rgba(255, 255, 255, 0.35);
+  --glass-border-dark: 1px solid rgba(255, 255, 255, 0.08);
+  --glass-shadow-light: 0 8px 32px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255,255,255,0.4);
+  --glass-shadow-dark: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255,255,255,0.06);
+
+  /* ── 圆角 ── */
+  --radius-card: 24px;
+  --radius-btn: 16px;
+  --radius-lg: 32px;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: #121212;
+  background-color: #0f0f1a;
   color: #ffffff;
+  overflow-x: hidden;
 }
+
+/* 滚动条美化 */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--acg-pink), var(--acg-purple));
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--acg-purple); }
+
+/* ============================================
+   二次元文字描边特效
+   ============================================ */
+.acg-title {
+  -webkit-text-stroke: 1.5px var(--acg-pink);
+  text-shadow:
+    0 0 10px rgba(255,107,157,0.5),
+    0 0 20px rgba(192,132,252,0.3),
+    0 2px 8px rgba(0,0,0,0.4);
+  color: #fff;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.acg-title-sm {
+  -webkit-text-stroke: 0.8px var(--acg-blue);
+  text-shadow:
+    0 0 8px rgba(96,165,250,0.4),
+    0 0 16px rgba(192,132,252,0.2),
+    0 1px 4px rgba(0,0,0,0.3);
+  color: #fff;
+  font-weight: 800;
+}
+
+.acg-subtitle {
+  text-shadow: 0 0 12px rgba(192,132,252,0.3), 0 1px 3px rgba(0,0,0,0.2);
+  color: rgba(255,255,255,0.85);
+}
+
+/* ============================================
+   液态毛玻璃效果
+   ============================================ */
+.glass-card {
+  background: var(--glass-bg-light);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-border-light);
+  border-radius: var(--radius-card);
+  box-shadow: var(--glass-shadow-light);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card-dark {
+  background: var(--glass-bg-dark);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-border-dark);
+  border-radius: var(--radius-card);
+  box-shadow: var(--glass-shadow-dark);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover, .glass-card-dark:hover {
+  transform: translateY(-4px);
+  box-shadow:
+    0 16px 48px rgba(255,107,157,0.15),
+    0 8px 24px rgba(192,132,252,0.1),
+    inset 0 1px 0 rgba(255,255,255,0.3);
+}
+
+/* ============================================
+   动画关键帧
+   ============================================ */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-12px); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 8px rgba(255,107,157,0.3); }
+  50% { box-shadow: 0 0 20px rgba(192,132,252,0.5), 0 0 40px rgba(96,165,250,0.2); }
+}
+
+@keyframes bgSlideIn {
+  from { opacity: 0; transform: scale(1.05); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes gradientRotate {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* ============================================
+   全屏二次元背景层
+   ============================================ */
+.acg-bg-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  animation: bgSlideIn 1s ease-out;
+  transition: background-image 0.8s ease-in-out;
+}
+
+.acg-bg-layer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(15,15,26,0.2) 0%,
+    rgba(15,15,26,0.4) 50%,
+    rgba(15,15,26,0.85) 100%
+  );
+}
+
+/* ============================================
+   渐变高亮按钮
+   ============================================ */
+.acg-btn {
+  background: var(--acg-gradient-primary);
+  background-size: 200% 200%;
+  border: none;
+  border-radius: var(--radius-btn);
+  color: #fff;
+  font-weight: 700;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.acg-btn:hover {
+  transform: translateY(-2px);
+  animation: gradientRotate 3s ease infinite;
+  box-shadow: 0 8px 24px rgba(255,107,157,0.3), 0 4px 12px rgba(192,132,252,0.2);
+}
+
+.acg-btn::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%; width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  transition: left 0.5s;
+}
+
+.acg-btn:hover::before { left: 100%; }
+
+/* ============================================
+   遮罩效果
+   ============================================ */
+.mask-fade-bottom {
+  mask-image: linear-gradient(to bottom, #000 60%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent 100%);
+}
+
+.mask-circle {
+  mask-image: radial-gradient(circle, #000 60%, transparent 100%);
+  -webkit-mask-image: radial-gradient(circle, #000 60%, transparent 100%);
+}
+
+.mask-fade-edges {
+  mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
+}
+
+/* ============================================
+   状态指示灯发光
+   ============================================ */
+.status-online { animation: pulseGlow 2s ease-in-out infinite; }
+
+/* 卡片渐入动画 */
+.card-enter { animation: fadeInUp 0.5s ease-out both; }

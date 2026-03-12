@@ -1,9 +1,7 @@
 import React, { useEffect, useState, useContext, useCallback } from 'react';
-import { Box, Typography, IconButton, Collapse, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Drawer, useTheme } from '@mui/material';
+import { Box, Typography, IconButton, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Drawer, useTheme } from '@mui/material';
 import { useNavigate, Outlet, useLocation } from 'react-router-dom';
 import PublicIcon from '@mui/icons-material/Public';
-import ExpandLess from '@mui/icons-material/ExpandLess';
-import ExpandMore from '@mui/icons-material/ExpandMore';
 import NapCatIcon from '../components/NapCatIcon';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import StorageIcon from '@mui/icons-material/Storage';
@@ -75,9 +73,28 @@ export default function AdminLayout() {
         navigate('/login');
     };
 
+    const isDark = theme.palette.mode === 'dark';
+
     return (
-        <Box sx={{ display: 'flex', minHeight: '100vh' }}>
-            {/* Sidebar */}
+        <Box sx={{
+            display: 'flex', minHeight: '100vh',
+            background: isDark
+                ? 'linear-gradient(135deg, #0f0f1a 0%, #1a1028 30%, #0f172a 70%, #0f0f1a 100%)'
+                : 'linear-gradient(135deg, #fdf2f8 0%, #ede9fe 30%, #dbeafe 70%, #f0f9ff 100%)',
+        }}>
+            {/* 装饰性渐变光球 */}
+            <Box sx={{
+                position: 'fixed', top: '-10%', right: '10%', width: '30vw', height: '30vw',
+                background: 'radial-gradient(circle, rgba(255,107,157,0.08) 0%, transparent 70%)',
+                filter: 'blur(60px)', zIndex: 0, pointerEvents: 'none',
+            }} />
+            <Box sx={{
+                position: 'fixed', bottom: '-10%', left: '20%', width: '25vw', height: '25vw',
+                background: 'radial-gradient(circle, rgba(96,165,250,0.08) 0%, transparent 70%)',
+                filter: 'blur(60px)', zIndex: 0, pointerEvents: 'none',
+            }} />
+
+            {/* 毛玻璃侧边栏 */}
             <Drawer
                 variant="permanent"
                 sx={{
@@ -86,22 +103,50 @@ export default function AdminLayout() {
                     '& .MuiDrawer-paper': {
                         width: drawerWidth,
                         boxSizing: 'border-box',
-                        backgroundColor: theme.palette.background.paper,
-                        borderRight: `1px solid ${theme.palette.divider}`
+                        background: isDark ? 'rgba(20,20,35,0.7)' : 'rgba(255,255,255,0.25)',
+                        backdropFilter: 'blur(24px) saturate(150%)',
+                        WebkitBackdropFilter: 'blur(24px) saturate(150%)',
+                        borderRight: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(255,255,255,0.4)',
+                        boxShadow: isDark
+                            ? '4px 0 24px rgba(0,0,0,0.3)'
+                            : '4px 0 24px rgba(192,132,252,0.06)',
                     },
                 }}
             >
-                <Box sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                    <Box sx={{ p: 0.5, borderRadius: 2, bgcolor: '#fff', display: 'flex' }}>
+                {/* Logo 区域 */}
+                <Box sx={{
+                    p: 3, display: 'flex', alignItems: 'center', gap: 2, mb: 1,
+                    borderBottom: isDark ? '1px solid rgba(255,255,255,0.04)' : '1px solid rgba(192,132,252,0.08)',
+                    pb: 3,
+                }}>
+                    <Box sx={{
+                        p: 0.5, borderRadius: '14px',
+                        background: 'linear-gradient(135deg, rgba(255,107,157,0.15), rgba(192,132,252,0.15))',
+                        border: '1px solid rgba(192,132,252,0.2)',
+                        display: 'flex',
+                        boxShadow: '0 0 12px rgba(192,132,252,0.15)',
+                    }}>
                         <NapCatIcon fontSize="medium" />
                     </Box>
                     <Box>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.2 }}>{t('admin.title')}</Typography>
-                        <Typography variant="caption" color="text.secondary">{t('admin.subtitle')}</Typography>
+                        <Typography variant="subtitle1" className="acg-title-sm" sx={{
+                            fontWeight: 800, lineHeight: 1.2, fontSize: '0.95rem',
+                            WebkitTextStroke: '0.5px rgba(192,132,252,0.6)',
+                        }}>
+                            {t('admin.title')}
+                        </Typography>
+                        <Typography variant="caption" sx={{
+                            color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)',
+                            fontSize: '0.7rem',
+                        }}>
+                            {t('admin.subtitle')}
+                        </Typography>
                     </Box>
                 </Box>
+
+                {/* 导航列表 */}
                 <Box sx={{ flex: 1, overflowY: 'auto' }}>
-                    <List component="nav" sx={{ px: 2, py: 2 }}>
+                    <List component="nav" sx={{ px: 2, py: 1 }}>
                         {([
                             { path: '/admin', icon: <DashboardIcon />, label: t('admin.managedInstances') },
                             { path: '/admin/cluster-settings', icon: <SettingsIcon />, label: t('admin.instanceSettings') },
@@ -115,44 +160,111 @@ export default function AdminLayout() {
                         ] as { path: string; icon: React.ReactNode; label: string }[]).map(item => {
                             const isActive = location.pathname === item.path;
                             return (
-                                <ListItem disablePadding sx={{ mb: 1 }} key={item.path}>
+                                <ListItem disablePadding sx={{ mb: 0.5 }} key={item.path}>
                                     <ListItemButton
                                         selected={isActive}
                                         onClick={() => navigate(item.path)}
-                                        sx={{ borderRadius: 2, '&.Mui-selected': { bgcolor: 'rgba(59, 130, 246, 0.15)', '&:hover': { bgcolor: 'rgba(59, 130, 246, 0.25)' } } }}
+                                        sx={{
+                                            borderRadius: '14px',
+                                            transition: 'all 0.3s ease',
+                                            '&.Mui-selected': {
+                                                background: 'linear-gradient(135deg, rgba(255,107,157,0.12), rgba(192,132,252,0.12))',
+                                                border: '1px solid rgba(192,132,252,0.15)',
+                                                boxShadow: '0 0 12px rgba(192,132,252,0.08)',
+                                                '&:hover': {
+                                                    background: 'linear-gradient(135deg, rgba(255,107,157,0.18), rgba(192,132,252,0.18))',
+                                                },
+                                            },
+                                            '&:not(.Mui-selected)': {
+                                                border: '1px solid transparent',
+                                                '&:hover': {
+                                                    background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(192,132,252,0.05)',
+                                                    transform: 'translateX(4px)',
+                                                },
+                                            },
+                                        }}
                                     >
-                                        <ListItemIcon sx={{ minWidth: 40, color: isActive ? '#60a5fa' : 'text.secondary' }}>{item.icon}</ListItemIcon>
-                                        <ListItemText primary={item.label} primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: isActive ? 600 : 500, color: isActive ? '#60a5fa' : 'text.primary' }} />
+                                        <ListItemIcon sx={{
+                                            minWidth: 40,
+                                            color: isActive ? '#c084fc' : (isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'),
+                                            filter: isActive ? 'drop-shadow(0 0 4px rgba(192,132,252,0.4))' : 'none',
+                                        }}>
+                                            {item.icon}
+                                        </ListItemIcon>
+                                        <ListItemText primary={item.label} primaryTypographyProps={{
+                                            fontSize: '0.85rem',
+                                            fontWeight: isActive ? 700 : 500,
+                                            color: isActive ? '#c084fc' : (isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.65)'),
+                                        }} />
                                     </ListItemButton>
                                 </ListItem>
                             );
                         })}
-
                     </List>
                 </Box>
-                <Box sx={{ position: 'absolute', bottom: 0, width: '100%', p: 2 }}>
+
+                {/* 底部区域 */}
+                <Box sx={{
+                    position: 'absolute', bottom: 0, width: '100%', p: 2,
+                    borderTop: isDark ? '1px solid rgba(255,255,255,0.04)' : '1px solid rgba(192,132,252,0.08)',
+                    background: isDark ? 'rgba(15,15,26,0.5)' : 'rgba(255,255,255,0.2)',
+                    backdropFilter: 'blur(12px)',
+                }}>
                     <ListItem disablePadding sx={{ mb: 1 }}>
-                        <ListItemButton onClick={() => navigate('/')} sx={{ borderRadius: 2 }}>
-                            <ListItemIcon sx={{ minWidth: 40 }}><PublicIcon sx={{ color: 'text.secondary' }} /></ListItemIcon>
-                            <ListItemText primary={t('admin.userSpaceBoard')} primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 500, color: 'text.secondary' }} />
+                        <ListItemButton onClick={() => navigate('/')} sx={{
+                            borderRadius: '14px',
+                            transition: 'all 0.3s ease',
+                            '&:hover': {
+                                background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(192,132,252,0.05)',
+                                transform: 'translateX(4px)',
+                            },
+                        }}>
+                            <ListItemIcon sx={{ minWidth: 40 }}>
+                                <PublicIcon sx={{ color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)' }} />
+                            </ListItemIcon>
+                            <ListItemText primary={t('admin.userSpaceBoard')} primaryTypographyProps={{
+                                fontSize: '0.85rem', fontWeight: 500,
+                                color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)',
+                            }} />
                         </ListItemButton>
                     </ListItem>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1, pt: 0 }}>
-                        {/* WS 连接状态指示 */}
+                        {/* WS 连接状态 */}
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <FiberManualRecordIcon sx={{ fontSize: 10, color: wsConnected ? '#22c55e' : '#ef4444' }} />
-                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                            <FiberManualRecordIcon sx={{
+                                fontSize: 10,
+                                color: wsConnected ? '#10b981' : '#ef4444',
+                                filter: wsConnected ? 'drop-shadow(0 0 4px #10b981)' : 'drop-shadow(0 0 4px #ef4444)',
+                            }} />
+                            <Typography variant="caption" sx={{
+                                fontSize: '0.7rem',
+                                color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)',
+                            }}>
                                 {wsConnected ? t('admin.wsConnected') : t('admin.wsDisconnected')}
                             </Typography>
                         </Box>
                         <Box>
-                            <IconButton onClick={toggleLanguage} size="small" sx={{ mr: 1 }} aria-label="Toggle language">
+                            <IconButton onClick={toggleLanguage} size="small" sx={{
+                                mr: 0.5,
+                                color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)',
+                                borderRadius: '10px',
+                                '&:hover': { background: 'rgba(192,132,252,0.1)', color: '#c084fc' },
+                            }} aria-label="Toggle language">
                                 <TranslateIcon fontSize="small" />
                             </IconButton>
-                            <IconButton onClick={colorMode.toggleTheme} size="small" sx={{ mr: 1 }} aria-label="Toggle theme">
-                                {theme.palette.mode === 'dark' ? <Brightness7Icon fontSize="small" /> : <Brightness4Icon fontSize="small" />}
+                            <IconButton onClick={colorMode.toggleTheme} size="small" sx={{
+                                mr: 0.5,
+                                color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)',
+                                borderRadius: '10px',
+                                '&:hover': { background: 'rgba(192,132,252,0.1)', color: '#c084fc' },
+                            }} aria-label="Toggle theme">
+                                {isDark ? <Brightness7Icon fontSize="small" /> : <Brightness4Icon fontSize="small" />}
                             </IconButton>
-                            <IconButton onClick={handleLogout} size="small" sx={{ color: 'error.main' }}>
+                            <IconButton onClick={handleLogout} size="small" sx={{
+                                color: '#ef4444',
+                                borderRadius: '10px',
+                                '&:hover': { background: 'rgba(239,68,68,0.1)' },
+                            }}>
                                 <ExitToAppIcon fontSize="small" />
                             </IconButton>
                         </Box>
@@ -160,8 +272,11 @@ export default function AdminLayout() {
                 </Box>
             </Drawer>
 
-            {/* Main content Area */}
-            <Box component="main" sx={{ flexGrow: 1, p: 0, bgcolor: theme.palette.background.default, minHeight: '100vh', overflow: 'auto' }}>
+            {/* 主内容区域 */}
+            <Box component="main" sx={{
+                flexGrow: 1, p: 0, minHeight: '100vh', overflow: 'auto',
+                position: 'relative', zIndex: 1,
+            }}>
                 <Outlet context={{ containers, refreshContainers }} />
             </Box>
         </Box>

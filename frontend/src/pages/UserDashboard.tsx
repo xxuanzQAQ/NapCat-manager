@@ -50,39 +50,17 @@ export default function UserDashboard() {
         return digits.slice(0, 3) + '***' + digits.slice(-3);
     };
 
-    // 加载背景壁纸：根据窗口方向选择横图/竖图
+    // 加载背景壁纸：使用二次元随机API
     useEffect(() => {
         let cancelled = false;
-        // 每个方向只随机选一次，resize 时仅切换方向不重新随机
-        let picked: { landscape: string; portrait: string } | null = null;
-
-        const pick = (list: string[]) => list.length ? list[Math.floor(Math.random() * list.length)] : '';
-
-        const applyOrientation = () => {
-            if (!picked) return;
-            const isLandscape = window.innerWidth >= window.innerHeight;
-            const url = isLandscape
-                ? (picked.landscape || picked.portrait)
-                : (picked.portrait || picked.landscape);
-            if (url) setBgUrl(url);
+        // 使用 alcy API 加载随机二次元背景
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            if (!cancelled) setBgUrl(img.src);
         };
-
-        (async () => {
-            try {
-                const res = await fetch('/api/resource/wallpapers?category=user-dashboard');
-                const json = await res.json();
-                if (cancelled || json.status !== 'ok') return;
-                picked = {
-                    landscape: pick(json.landscape || []),
-                    portrait: pick(json.portrait || []),
-                };
-                applyOrientation();
-            } catch { /* ignore */ }
-        })();
-
-        const onResize = () => applyOrientation();
-        window.addEventListener('resize', onResize);
-        return () => { cancelled = true; window.removeEventListener('resize', onResize); };
+        img.src = 'https://t.alcy.cc/ycy?' + Date.now();
+        return () => { cancelled = true; };
     }, []);
 
     const [page, setPage] = useState(1);
@@ -257,24 +235,64 @@ export default function UserDashboard() {
         return () => clearInterval(interval);
     }, [containers]);
 
+    const isDark = theme.palette.mode === 'dark';
+
     return (
         <Box sx={{
             p: { xs: 2, md: 4, lg: 6 }, minHeight: '100vh',
-            bgcolor: 'background.default',
             position: 'relative',
-            '&::before': bgUrl ? {
-                content: '""', position: 'fixed', inset: 0, zIndex: 0,
-                backgroundImage: `url(${bgUrl})`,
-                backgroundSize: 'cover', backgroundPosition: 'center',
-                opacity: theme.palette.mode === 'dark' ? 0.15 : 0.2,
-                pointerEvents: 'none',
-            } : {},
+            background: isDark
+                ? 'linear-gradient(135deg, #0f0f1a 0%, #1a1028 30%, #0f172a 70%, #0f0f1a 100%)'
+                : 'linear-gradient(135deg, #fdf2f8 0%, #ede9fe 30%, #dbeafe 70%, #f0f9ff 100%)',
         }}>
+            {/* 全屏二次元背景 */}
+            {bgUrl && (
+                <Box sx={{
+                    position: 'fixed', inset: 0, zIndex: 0,
+                    backgroundImage: `url(${bgUrl})`,
+                    backgroundSize: 'cover', backgroundPosition: 'center',
+                    opacity: isDark ? 0.2 : 0.3,
+                    animation: 'bgSlideIn 1.2s ease-out',
+                    '&::after': {
+                        content: '""', position: 'absolute', inset: 0,
+                        background: isDark
+                            ? 'linear-gradient(180deg, rgba(15,15,26,0.2) 0%, rgba(15,15,26,0.5) 50%, rgba(15,15,26,0.9) 100%)'
+                            : 'linear-gradient(180deg, rgba(255,255,255,0.1) 0%, rgba(253,242,248,0.4) 50%, rgba(253,242,248,0.85) 100%)',
+                    },
+                    pointerEvents: 'none',
+                }} />
+            )}
+
+            {/* 装饰性渐变光球 */}
+            <Box sx={{
+                position: 'fixed', top: '-15%', right: '-5%', width: '40vw', height: '40vw',
+                background: 'radial-gradient(circle, rgba(255,107,157,0.12) 0%, transparent 70%)',
+                filter: 'blur(60px)', zIndex: 0, pointerEvents: 'none',
+            }} />
+            <Box sx={{
+                position: 'fixed', bottom: '-15%', left: '-5%', width: '35vw', height: '35vw',
+                background: 'radial-gradient(circle, rgba(96,165,250,0.12) 0%, transparent 70%)',
+                filter: 'blur(60px)', zIndex: 0, pointerEvents: 'none',
+            }} />
+
             <Box sx={{ maxWidth: 1100, mx: 'auto', position: 'relative', zIndex: 1 }}>
 
-                {/* Header */}
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                    <Typography variant="h5" sx={{ fontWeight: 800, color: 'text.primary' }}>
+                {/* Header - 毛玻璃导航栏 */}
+                <Box sx={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4,
+                    p: 2, px: 3,
+                    background: isDark ? 'rgba(30,30,46,0.45)' : 'rgba(255,255,255,0.3)',
+                    backdropFilter: 'blur(20px) saturate(150%)',
+                    WebkitBackdropFilter: 'blur(20px) saturate(150%)',
+                    border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(255,255,255,0.5)',
+                    borderRadius: '20px',
+                    boxShadow: isDark
+                        ? '0 4px 24px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.04)'
+                        : '0 4px 24px rgba(192,132,252,0.08), inset 0 1px 0 rgba(255,255,255,0.5)',
+                }}>
+                    <Typography variant="h5" className="acg-title" sx={{
+                        fontSize: { xs: '1.1rem', sm: '1.4rem' },
+                    }}>
                         {t('user.title')}
                     </Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -286,112 +304,210 @@ export default function UserDashboard() {
                             InputProps={{
                                 startAdornment: (
                                     <InputAdornment position="start">
-                                        <SearchIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+                                        <SearchIcon sx={{ fontSize: 18, color: '#c084fc' }} />
                                     </InputAdornment>
                                 ),
                             }}
                             sx={{
-                                width: { xs: 140, sm: 200 },
+                                width: { xs: 120, sm: 180 },
                                 '& .MuiOutlinedInput-root': {
-                                    borderRadius: 2,
-                                    height: 36,
-                                    fontSize: '0.85rem',
+                                    borderRadius: '14px', height: 36, fontSize: '0.85rem',
+                                    background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.5)',
+                                    backdropFilter: 'blur(8px)',
+                                    '& fieldset': { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(192,132,252,0.2)' },
+                                    '&:hover fieldset': { borderColor: '#c084fc' },
                                 },
                             }}
                         />
                         <Button
                             variant="outlined"
-                            color="inherit"
                             size="small"
                             startIcon={<AdminPanelSettingsIcon />}
                             onClick={() => navigate('/login')}
-                            sx={{ borderColor: 'divider', color: 'text.secondary', borderRadius: 2, height: 36, textTransform: 'none' }}
+                            sx={{
+                                borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(192,132,252,0.3)',
+                                color: isDark ? 'rgba(255,255,255,0.7)' : '#7c3aed',
+                                borderRadius: '14px', height: 36, textTransform: 'none',
+                                backdropFilter: 'blur(8px)',
+                                background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.4)',
+                                '&:hover': {
+                                    borderColor: '#c084fc',
+                                    background: isDark ? 'rgba(192,132,252,0.1)' : 'rgba(192,132,252,0.08)',
+                                    transform: 'translateY(-1px)',
+                                },
+                                transition: 'all 0.3s ease',
+                            }}
                         >
                             {t('user.adminLogin')}
                         </Button>
-                        <IconButton onClick={toggleLanguage} aria-label="Toggle language">
+                        <IconButton onClick={toggleLanguage} aria-label="Toggle language"
+                            sx={{
+                                color: isDark ? 'rgba(255,255,255,0.6)' : '#7c3aed',
+                                background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.4)',
+                                borderRadius: '12px',
+                                '&:hover': { background: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(192,132,252,0.1)' },
+                            }}>
                             <TranslateIcon />
                         </IconButton>
-                        <IconButton onClick={colorMode.toggleTheme} aria-label="Toggle theme">
-                            {theme.palette.mode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
+                        <IconButton onClick={colorMode.toggleTheme} aria-label="Toggle theme"
+                            sx={{
+                                color: isDark ? 'rgba(255,255,255,0.6)' : '#7c3aed',
+                                background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.4)',
+                                borderRadius: '12px',
+                                '&:hover': { background: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(192,132,252,0.1)' },
+                            }}>
+                            {isDark ? <Brightness7Icon /> : <Brightness4Icon />}
                         </IconButton>
                     </Box>
                 </Box>
 
                 {/* Cards */}
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 2 }}>
-                    {loading ? [...Array(4)].map((_, i) => <Skeleton key={i} variant="rounded" height={120} sx={{ borderRadius: 3, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.6)' }} />)
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 2.5 }}>
+                    {loading ? [...Array(4)].map((_, i) => <Skeleton key={i} variant="rounded" height={140} sx={{
+                        borderRadius: '24px',
+                        bgcolor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.3)',
+                        animation: 'pulseGlow 2s ease-in-out infinite',
+                    }} />)
                         : filteredContainers.length === 0 ? (
-                            <Box sx={{ gridColumn: '1 / -1', py: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', borderRadius: 3, border: `1px solid ${theme.palette.divider}` }}>
-                                <CloudOffIcon sx={{ fontSize: 48, color: '#94a3b8', mb: 1.5 }} />
-                                <Typography variant="body1" sx={{ fontWeight: 600, color: 'text.primary' }}>{searchQuery ? t('user.noSearchResults') : t('user.noBots')}</Typography>
-                                <Typography variant="body2" color="text.secondary">{searchQuery ? t('user.tryDifferentSearch') : t('user.contactAdmin')}</Typography>
+                            <Box sx={{
+                                gridColumn: '1 / -1', py: 8, display: 'flex', flexDirection: 'column', alignItems: 'center',
+                                borderRadius: '24px',
+                                background: isDark ? 'rgba(30,30,46,0.4)' : 'rgba(255,255,255,0.25)',
+                                backdropFilter: 'blur(16px) saturate(150%)',
+                                border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(255,255,255,0.4)',
+                            }}>
+                                <CloudOffIcon sx={{ fontSize: 48, color: '#c084fc', mb: 1.5, filter: 'drop-shadow(0 0 8px rgba(192,132,252,0.4))' }} />
+                                <Typography variant="body1" className="acg-title-sm" sx={{ fontSize: '1rem', mb: 0.5 }}>
+                                    {searchQuery ? t('user.noSearchResults') : t('user.noBots')}
+                                </Typography>
+                                <Typography variant="body2" sx={{ color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)' }}>
+                                    {searchQuery ? t('user.tryDifferentSearch') : t('user.contactAdmin')}
+                                </Typography>
                             </Box>
-                        ) : displayedContainers.map(c => {
+                        ) : displayedContainers.map((c, cardIdx) => {
                             const qr = qrCodes[c.name] || { status: 'loading' };
                             const isRefreshing = refreshingCards[c.name] || false;
                             const isRestarting = restartingCards[c.name] || false;
                             const isOffline = c.status !== 'running';
-                            // QQ 被踢下线（容器运行中但QQ掉线，不会推二维码，需重启）
                             const isKicked = !isOffline && ((c as any).kicked === true || qr.status === 'need_restart');
-                            // 容器在线但QQ未登录（真正待扫码，非 kicked 状态）
                             const isWaitingLogin = c.status === 'running' && c.qq_logged_in === false && !isKicked;
                             const needsQR = c.status === 'running' && qr.status === 'loaded' && !isKicked;
                             const uinDigits = qr.uin ? String(qr.uin).replace(/\D/g, '') : '';
+
+                            // 状态对应的渐变色
+                            const statusGradient = isOffline
+                                ? 'linear-gradient(135deg, rgba(239,68,68,0.15), rgba(239,68,68,0.05))'
+                                : isKicked
+                                    ? 'linear-gradient(135deg, rgba(249,115,22,0.15), rgba(249,115,22,0.05))'
+                                    : isWaitingLogin
+                                        ? 'linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.05))'
+                                        : isDark
+                                            ? 'linear-gradient(135deg, rgba(192,132,252,0.06), rgba(96,165,250,0.04))'
+                                            : 'linear-gradient(135deg, rgba(255,107,157,0.04), rgba(192,132,252,0.04))';
+
+                            const borderColor = isOffline ? 'rgba(239,68,68,0.4)'
+                                : isKicked ? 'rgba(249,115,22,0.4)'
+                                    : isWaitingLogin ? 'rgba(245,158,11,0.4)'
+                                        : isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.45)';
+
                             return (
                                 <Box key={c.id} sx={{
-                                    background: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.65)',
-                                    backdropFilter: 'blur(12px)',
-                                    borderRadius: 3,
-                                    border: `1px solid ${isOffline ? '#f87171' : isKicked ? '#f97316' : isWaitingLogin ? '#f59e0b' : theme.palette.divider}`,
-                                    p: 2, display: 'flex', flexDirection: 'row', alignItems: 'stretch',
-                                    transition: 'all 0.2s', gap: 1.5,
-                                    '&:hover': { borderColor: isOffline ? '#ef4444' : isKicked ? '#ea580c' : isWaitingLogin ? '#d97706' : theme.palette.primary.main, boxShadow: `0 0 0 1px ${isOffline ? '#ef444422' : isKicked ? '#f9731622' : isWaitingLogin ? '#f59e0b22' : theme.palette.primary.main + '22'}` }
+                                    background: statusGradient,
+                                    backdropFilter: 'blur(20px) saturate(150%)',
+                                    WebkitBackdropFilter: 'blur(20px) saturate(150%)',
+                                    borderRadius: '22px',
+                                    border: `1px solid ${borderColor}`,
+                                    p: 2.5, display: 'flex', flexDirection: 'row', alignItems: 'stretch',
+                                    gap: 2, position: 'relative', overflow: 'hidden',
+                                    transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                                    animation: `fadeInUp 0.5s ease-out ${cardIdx * 0.05}s both`,
+                                    boxShadow: isDark
+                                        ? '0 4px 20px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.04)'
+                                        : '0 4px 20px rgba(192,132,252,0.06), inset 0 1px 0 rgba(255,255,255,0.5)',
+                                    '&:hover': {
+                                        transform: 'translateY(-4px)',
+                                        boxShadow: isDark
+                                            ? '0 16px 48px rgba(192,132,252,0.15), 0 8px 24px rgba(255,107,157,0.1), inset 0 1px 0 rgba(255,255,255,0.06)'
+                                            : '0 16px 48px rgba(192,132,252,0.15), 0 8px 24px rgba(255,107,157,0.08), inset 0 1px 0 rgba(255,255,255,0.6)',
+                                        borderColor: isOffline ? '#ef4444' : isKicked ? '#f97316' : isWaitingLogin ? '#f59e0b' : '#c084fc',
+                                    },
+                                    // 顶部渐变装饰线
+                                    '&::before': {
+                                        content: '""', position: 'absolute', top: 0, left: '10%', right: '10%', height: '2px',
+                                        background: isOffline
+                                            ? 'linear-gradient(90deg, transparent, #ef4444, transparent)'
+                                            : isKicked
+                                                ? 'linear-gradient(90deg, transparent, #f97316, transparent)'
+                                                : 'linear-gradient(90deg, transparent, #ff6b9d, #c084fc, #60a5fa, transparent)',
+                                        opacity: 0.6, borderRadius: '2px',
+                                    },
                                 }}>
                                     {/* 左侧 - 信息区 */}
                                     <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                                        {/* 容器名（居中，最多两行自动换行） */}
+                                        {/* 容器名 */}
                                         <Typography variant="subtitle2" sx={{
-                                            fontWeight: 700, textAlign: 'center', fontSize: '0.88rem',
+                                            fontWeight: 800, textAlign: 'center', fontSize: '0.9rem',
                                             display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
                                             overflow: 'hidden', textOverflow: 'ellipsis',
                                             wordBreak: 'break-all', lineHeight: 1.35, minHeight: '2.4em',
+                                            color: isDark ? '#f0e6ff' : '#1f2937',
+                                            textShadow: isDark ? '0 1px 4px rgba(0,0,0,0.3)' : 'none',
                                         }}>{highlight(c.name)}</Typography>
-                                        {/* 头像 + QQ号（仅已登录才显示，居中） */}
+                                        {/* 头像 + QQ号 */}
                                         {qr.status === 'logged_in' && uinDigits && (
-                                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mt: 1, gap: 0.5 }}>
+                                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mt: 1.5, gap: 0.5 }}>
                                                 <Box component="img"
                                                     src={`https://q1.qlogo.cn/g?b=qq&nk=${uinDigits}&s=640`}
-                                                    sx={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }}
+                                                    className="mask-circle"
+                                                    sx={{
+                                                        width: 36, height: 36, borderRadius: '50%', objectFit: 'cover',
+                                                        border: '2px solid rgba(192,132,252,0.4)',
+                                                        boxShadow: '0 0 12px rgba(192,132,252,0.3)',
+                                                    }}
                                                 />
-                                                <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.72rem' }}>
+                                                <Typography variant="caption" sx={{
+                                                    color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.45)',
+                                                    fontSize: '0.72rem',
+                                                }}>
                                                     QQ: {maskUin(uinDigits)}
                                                 </Typography>
                                             </Box>
                                         )}
-                                        {/* 底部：状态 + 操作按钮，两端对齐 */}
+                                        {/* 底部：状态 + 操作按钮 */}
                                         <Box sx={{ mt: 'auto', pt: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                            {/* 状态标签：四态 - 在线 / 待重启(kicked) / 待登录 / 离线 */}
+                                            {/* 状态标签 */}
                                             {c.status === 'running' && !isWaitingLogin && !isKicked ? (
-                                                <Typography variant="caption" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.4, color: '#059669', fontWeight: 600, fontSize: '0.7rem' }}>
-                                                    <Box sx={{ width: 5, height: 5, bgcolor: '#10b981', borderRadius: '50%' }} /> {t('admin.online')}
+                                                <Typography variant="caption" sx={{
+                                                    display: 'inline-flex', alignItems: 'center', gap: 0.4,
+                                                    color: '#10b981', fontWeight: 700, fontSize: '0.7rem',
+                                                    textShadow: '0 0 8px rgba(16,185,129,0.4)',
+                                                }}>
+                                                    <Box sx={{ width: 6, height: 6, bgcolor: '#10b981', borderRadius: '50%', boxShadow: '0 0 6px #10b981' }} /> {t('admin.online')}
                                                 </Typography>
                                             ) : isKicked ? (
-                                                <Typography variant="caption" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.4, color: '#ea580c', fontWeight: 700, fontSize: '0.7rem' }}>
-                                                    <Box sx={{ width: 5, height: 5, bgcolor: '#f97316', borderRadius: '50%' }} /> 待重启
+                                                <Typography variant="caption" sx={{
+                                                    display: 'inline-flex', alignItems: 'center', gap: 0.4,
+                                                    color: '#f97316', fontWeight: 700, fontSize: '0.7rem',
+                                                }}>
+                                                    <Box sx={{ width: 6, height: 6, bgcolor: '#f97316', borderRadius: '50%', boxShadow: '0 0 6px #f97316' }} /> 待重启
                                                 </Typography>
                                             ) : isWaitingLogin ? (
-                                                <Typography variant="caption" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.4, color: '#d97706', fontWeight: 700, fontSize: '0.7rem' }}>
-                                                    <Box sx={{ width: 5, height: 5, bgcolor: '#f59e0b', borderRadius: '50%' }} /> 待登录
+                                                <Typography variant="caption" sx={{
+                                                    display: 'inline-flex', alignItems: 'center', gap: 0.4,
+                                                    color: '#f59e0b', fontWeight: 700, fontSize: '0.7rem',
+                                                }}>
+                                                    <Box sx={{ width: 6, height: 6, bgcolor: '#f59e0b', borderRadius: '50%', boxShadow: '0 0 6px #f59e0b' }} /> 待登录
                                                 </Typography>
                                             ) : (
-                                                <Typography variant="caption" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.4, color: '#ef4444', fontWeight: 700, fontSize: '0.7rem' }}>
-                                                    <Box sx={{ width: 5, height: 5, bgcolor: '#ef4444', borderRadius: '50%' }} /> 离线
+                                                <Typography variant="caption" sx={{
+                                                    display: 'inline-flex', alignItems: 'center', gap: 0.4,
+                                                    color: '#ef4444', fontWeight: 700, fontSize: '0.7rem',
+                                                }}>
+                                                    <Box sx={{ width: 6, height: 6, bgcolor: '#ef4444', borderRadius: '50%', boxShadow: '0 0 6px #ef4444' }} /> 离线
                                                 </Typography>
                                             )}
                                             {/* 操作按钮区 */}
                                             <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
-                                                {/* 掉线、被踢下线或待扫码时显示重启按钮 */}
                                                 {(isOffline || isKicked || isWaitingLogin) && (
                                                     <Tooltip title={isKicked ? '重启容器以重新登录' : isWaitingLogin ? '重启容器以刷新二维码' : '重启容器'}>
                                                         <span>
@@ -399,7 +515,13 @@ export default function UserDashboard() {
                                                                 size="small"
                                                                 disabled={isRestarting}
                                                                 onClick={() => restartContainer(c.name, c.node_id)}
-                                                                sx={{ color: '#f97316', p: 0.5, '&:hover': { color: '#ea580c' } }}
+                                                                sx={{
+                                                                    color: '#f97316', p: 0.5,
+                                                                    background: 'rgba(249,115,22,0.1)',
+                                                                    borderRadius: '10px',
+                                                                    '&:hover': { color: '#ea580c', background: 'rgba(249,115,22,0.2)', transform: 'scale(1.1)' },
+                                                                    transition: 'all 0.2s',
+                                                                }}
                                                             >
                                                                 {isRestarting ? <CircularProgress size={14} /> : <RestartAltIcon sx={{ fontSize: 16 }} />}
                                                             </IconButton>
@@ -412,20 +534,31 @@ export default function UserDashboard() {
                                                         <IconButton
                                                             size="small"
                                                             onClick={() => setQrDialogName(c.name)}
-                                                            sx={{ color: '#6366f1', p: 0.5 }}
+                                                            sx={{
+                                                                color: '#c084fc', p: 0.5,
+                                                                background: 'rgba(192,132,252,0.1)',
+                                                                borderRadius: '10px',
+                                                                '&:hover': { background: 'rgba(192,132,252,0.2)', transform: 'scale(1.1)' },
+                                                                transition: 'all 0.2s',
+                                                            }}
                                                         >
                                                             <QrCode2Icon sx={{ fontSize: 16 }} />
                                                         </IconButton>
                                                     </Tooltip>
                                                 )}
-                                                {/* 刷新按钮（仅运行中容器） */}
+                                                {/* 刷新按钮 */}
                                                 {!isOffline && (
                                                     <Tooltip title="刷新状态">
                                                         <IconButton
                                                             size="small"
                                                             disabled={isRefreshing}
                                                             onClick={() => refreshCard(c.name, c.node_id)}
-                                                            sx={{ color: 'text.secondary', p: 0.5 }}
+                                                            sx={{
+                                                                color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.35)',
+                                                                p: 0.5, borderRadius: '10px',
+                                                                '&:hover': { background: 'rgba(192,132,252,0.1)', transform: 'scale(1.1)' },
+                                                                transition: 'all 0.2s',
+                                                            }}
                                                         >
                                                             {isRefreshing ? <CircularProgress size={14} /> : <RefreshIcon sx={{ fontSize: 16 }} />}
                                                         </IconButton>
@@ -438,72 +571,83 @@ export default function UserDashboard() {
                                     <Box
                                         onClick={() => qr.status === 'loaded' && !isOffline && !isKicked ? setQrDialogName(c.name) : undefined}
                                         sx={{
-                                            width: 140, minHeight: 140, borderRadius: 2, overflow: 'hidden',
+                                            width: 140, minHeight: 140, borderRadius: '16px', overflow: 'hidden',
                                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                                             flexDirection: 'column', gap: 1, flexShrink: 0,
-                                            bgcolor: theme.palette.mode === 'dark' ? '#1e293b' : '#f8fafc',
+                                            background: isDark ? 'rgba(15,15,26,0.5)' : 'rgba(255,255,255,0.4)',
+                                            backdropFilter: 'blur(8px)',
+                                            border: isDark ? '1px solid rgba(255,255,255,0.04)' : '1px solid rgba(255,255,255,0.3)',
                                             cursor: (qr.status === 'loaded' && !isOffline && !isKicked) ? 'pointer' : 'default',
-                                            transition: 'transform 0.15s',
-                                            '&:hover': (qr.status === 'loaded' && !isOffline && !isKicked) ? { transform: 'scale(1.04)' } : {},
+                                            transition: 'all 0.3s ease',
+                                            '&:hover': (qr.status === 'loaded' && !isOffline && !isKicked) ? {
+                                                transform: 'scale(1.04)',
+                                                boxShadow: '0 0 20px rgba(192,132,252,0.2)',
+                                            } : {},
                                         }}
                                     >
                                         {isOffline ? (
-                                            // 离线：显示图标 + 文字 + 重启提示
                                             <>
-                                                <CloudOffIcon sx={{ color: '#ef4444', fontSize: 32 }} />
+                                                <CloudOffIcon sx={{ color: '#ef4444', fontSize: 32, filter: 'drop-shadow(0 0 6px rgba(239,68,68,0.4))' }} />
                                                 <Typography variant="caption" sx={{ color: '#ef4444', fontWeight: 700, fontSize: '0.68rem', textAlign: 'center', px: 1 }}>
                                                     已离线
                                                 </Typography>
                                                 <Button
-                                                    size="small"
-                                                    variant="contained"
+                                                    size="small" variant="contained"
                                                     disabled={isRestarting}
                                                     onClick={() => restartContainer(c.name, c.node_id)}
                                                     startIcon={isRestarting ? <CircularProgress size={10} color="inherit" /> : <RestartAltIcon sx={{ fontSize: 13 }} />}
                                                     sx={{
                                                         fontSize: '0.65rem', py: 0.3, px: 1, minWidth: 0,
-                                                        bgcolor: '#f97316', '&:hover': { bgcolor: '#ea580c' },
-                                                        borderRadius: 1.5, textTransform: 'none',
+                                                        background: 'linear-gradient(135deg, #f97316, #ef4444)',
+                                                        '&:hover': { background: 'linear-gradient(135deg, #ea580c, #dc2626)' },
+                                                        borderRadius: '10px', textTransform: 'none',
+                                                        boxShadow: '0 2px 8px rgba(249,115,22,0.3)',
                                                     }}
                                                 >
                                                     {isRestarting ? '重启中...' : '重启'}
                                                 </Button>
                                             </>
                                         ) : isKicked ? (
-                                            // QQ 被踢下线：不推二维码，显示重启提示
                                             <>
-                                                <RestartAltIcon sx={{ color: '#f97316', fontSize: 32 }} />
+                                                <RestartAltIcon sx={{ color: '#f97316', fontSize: 32, filter: 'drop-shadow(0 0 6px rgba(249,115,22,0.4))' }} />
                                                 <Typography variant="caption" sx={{ color: '#ea580c', fontWeight: 700, fontSize: '0.68rem', textAlign: 'center', px: 1 }}>
                                                     QQ 已掉线
                                                 </Typography>
                                                 <Button
-                                                    size="small"
-                                                    variant="contained"
+                                                    size="small" variant="contained"
                                                     disabled={isRestarting}
                                                     onClick={() => restartContainer(c.name, c.node_id)}
                                                     startIcon={isRestarting ? <CircularProgress size={10} color="inherit" /> : <RestartAltIcon sx={{ fontSize: 13 }} />}
                                                     sx={{
                                                         fontSize: '0.65rem', py: 0.3, px: 1, minWidth: 0,
-                                                        bgcolor: '#f97316', '&:hover': { bgcolor: '#ea580c' },
-                                                        borderRadius: 1.5, textTransform: 'none',
+                                                        background: 'linear-gradient(135deg, #f97316, #ef4444)',
+                                                        '&:hover': { background: 'linear-gradient(135deg, #ea580c, #dc2626)' },
+                                                        borderRadius: '10px', textTransform: 'none',
+                                                        boxShadow: '0 2px 8px rgba(249,115,22,0.3)',
                                                     }}
                                                 >
                                                     {isRestarting ? '重启中...' : '重启'}
                                                 </Button>
                                             </>
                                         ) : qr.status === 'loaded' ? (
-                                            <img src={qr.url} alt="QR" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                            <img src={qr.url} alt="QR" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px' }} />
                                         ) : qr.status === 'logged_in' ? (
-                                            <Typography variant="caption" sx={{ color: '#059669', fontWeight: 600, fontSize: '0.7rem' }}>{t('user.loggedIn')}</Typography>
+                                            <Typography variant="caption" sx={{
+                                                color: '#10b981', fontWeight: 700, fontSize: '0.75rem',
+                                                textShadow: '0 0 8px rgba(16,185,129,0.4)',
+                                            }}>{t('user.loggedIn')}</Typography>
                                         ) : qr.status === 'waiting' || qr.status === 'loading' ? (
                                             <>
-                                                <CircularProgress size={24} sx={{ color: '#94a3b8' }} />
-                                                <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.65rem', textAlign: 'center', px: 1 }}>
+                                                <CircularProgress size={24} sx={{ color: '#c084fc' }} />
+                                                <Typography variant="caption" sx={{
+                                                    color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.35)',
+                                                    fontSize: '0.65rem', textAlign: 'center', px: 1,
+                                                }}>
                                                     等待二维码...
                                                 </Typography>
                                             </>
                                         ) : (
-                                            <Typography variant="caption" color="error" sx={{ fontSize: '0.7rem' }}>{t('user.loadFailed')}</Typography>
+                                            <Typography variant="caption" sx={{ color: '#ef4444', fontSize: '0.7rem' }}>{t('user.loadFailed')}</Typography>
                                         )}
                                     </Box>
                                 </Box>
@@ -512,7 +656,24 @@ export default function UserDashboard() {
                 </Box>
 
                 {totalPages > 1 && (
-                    <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+                    <Box sx={{
+                        display: 'flex', justifyContent: 'center', mt: 4,
+                        '& .MuiPagination-root': {
+                            '& .MuiPaginationItem-root': {
+                                borderRadius: '12px',
+                                backdropFilter: 'blur(8px)',
+                                background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.3)',
+                                border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(255,255,255,0.4)',
+                                color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)',
+                                '&.Mui-selected': {
+                                    background: 'linear-gradient(135deg, #ff6b9d, #c084fc)',
+                                    color: '#fff',
+                                    fontWeight: 700,
+                                    boxShadow: '0 2px 8px rgba(192,132,252,0.3)',
+                                },
+                            },
+                        },
+                    }}>
                         <Pagination
                             count={totalPages}
                             page={page}
@@ -525,7 +686,7 @@ export default function UserDashboard() {
 
             </Box>
 
-            {/* QR 放大弹窗 */}
+            {/* QR 放大弹窗 - 毛玻璃风格 */}
             <Dialog
                 open={!!qrDialogName}
                 onClose={() => setQrDialogName(null)}
@@ -533,8 +694,13 @@ export default function UserDashboard() {
                 fullWidth
                 PaperProps={{
                     sx: {
-                        borderRadius: 4, backgroundImage: 'none',
-                        bgcolor: theme.palette.mode === 'dark' ? '#1e1e1e' : '#fff',
+                        borderRadius: '28px', backgroundImage: 'none',
+                        background: isDark ? 'rgba(30,30,46,0.8)' : 'rgba(255,255,255,0.6)',
+                        backdropFilter: 'blur(24px) saturate(150%)',
+                        border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(255,255,255,0.5)',
+                        boxShadow: isDark
+                            ? '0 24px 64px rgba(0,0,0,0.5)'
+                            : '0 24px 64px rgba(192,132,252,0.15)',
                     }
                 }}
             >
@@ -545,17 +711,24 @@ export default function UserDashboard() {
                         if (!qr || qr.status !== 'loaded') return null;
                         return (
                             <>
-                                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, textAlign: 'center' }}>
+                                <Typography variant="h6" className="acg-title-sm" sx={{
+                                    fontWeight: 800, mb: 2, textAlign: 'center', fontSize: '1.1rem',
+                                }}>
                                     {container?.name || qrDialogName}
                                 </Typography>
                                 <Box sx={{
-                                    width: 280, height: 280, borderRadius: 3, overflow: 'hidden',
-                                    bgcolor: '#fff', p: 1, border: `1px solid ${theme.palette.divider}`,
+                                    width: 280, height: 280, borderRadius: '20px', overflow: 'hidden',
+                                    bgcolor: '#fff', p: 1.5,
+                                    border: '2px solid rgba(192,132,252,0.2)',
+                                    boxShadow: '0 0 20px rgba(192,132,252,0.1)',
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                 }}>
-                                    <img src={qr.url} alt="QR Code" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                    <img src={qr.url} alt="QR Code" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '12px' }} />
                                 </Box>
-                                <Typography variant="body2" color="text.secondary" sx={{ mt: 2, textAlign: 'center' }}>
+                                <Typography variant="body2" sx={{
+                                    mt: 2, textAlign: 'center',
+                                    color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.45)',
+                                }}>
                                     {t('user.scanToLogin')}
                                 </Typography>
                             </>
