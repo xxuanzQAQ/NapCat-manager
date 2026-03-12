@@ -13,7 +13,7 @@ interface UseWSOptions {
     enabled?: boolean;
 }
 
-const HEARTBEAT_TIMEOUT = 15000; // 15s 无消息则判定断线
+const HEARTBEAT_TIMEOUT = 25000; // 25s 无消息则判定断线（WS 每 5s 推一次，预留 5 倍余量）
 
 export function useWebSocket<T = unknown>(options: UseWSOptions) {
     const { path, reconnectInterval = 5000, enabled = true } = options;

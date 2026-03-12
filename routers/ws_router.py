@@ -23,6 +23,7 @@ def _build_snapshot(containers: list) -> dict:
         snap[c["name"]] = {
             "status": c.get("status", ""),
             "uin": c.get("uin", ""),
+            "qq_logged_in": c.get("qq_logged_in", False),
             "node_id": c.get("node_id", "local"),
         }
     return snap
@@ -39,7 +40,13 @@ def _resolve_ws_token(ws: WebSocket, query_token: str) -> str:
 
 @router.websocket("/ws/events")
 async def ws_events(ws: WebSocket, token: str = Query(default="")):
-    """容器状态实时推送。首次全量 + 后续增量 diff + 定期登录检测。"""
+    """容器状态实时推送。首次全量 + 后续增量 diff + 定期登录检测。
+
+    性能优化策略（针对 60+ 容器高并发场景）：
+    - 主循环 5s 一次（原 3s），减少 Docker socket 调用频率
+    - batch_check_login 每 60s 触发一次（原每 9s），避免大量并发 HTTP 连接堆积
+    - 登录状态通过分级缓存（已登录 120s / 未登录 20s）大幅减少实际 API 调用
+    """
     effective_token = _resolve_ws_token(ws, token)
     session = validate_token_value(effective_token) if effective_token else None
     if not session:
@@ -58,12 +65,13 @@ async def ws_events(ws: WebSocket, token: str = Query(default="")):
                 )
             except (asyncio.TimeoutError, Exception) as e:
                 logger.debug("WS list_all_containers 超时/异常: %s", e)
-                await asyncio.sleep(3)
+                await asyncio.sleep(5)
                 continue
 
-            # 每 3 轮（~9s）触发一次 batch_check_login，保持 uin 缓存热
+            # 每 12 轮（~60s）触发一次 batch_check_login，保持 uin 缓存热
+            # 原来每 3 轮（~9s）一次，高并发时导致大量 HTTP 连接堆积；现在降频到 60s
             tick += 1
-            if tick % 3 == 0:
+            if tick % 12 == 0:
                 running_names = [
                     c["name"] for c in containers
                     if c.get("status") == "running" and c.get("node_id", "local") == "local"
@@ -71,18 +79,24 @@ async def ws_events(ws: WebSocket, token: str = Query(default="")):
                 if running_names:
                     try:
                         await asyncio.wait_for(
-                            run_in_threadpool(docker_manager.batch_check_login, running_names, 4.0),
-                            timeout=6
+                            run_in_threadpool(docker_manager.batch_check_login, running_names, 8.0),
+                            timeout=10
                         )
                     except (asyncio.TimeoutError, Exception):
                         pass
 
-            # 附带 login 缓存中的 uin
+            # 附带 login 缓存中的 uin 和 qq_logged_in 字段
+            # qq_logged_in: True=QQ已登录, False=容器在线但QQ未登录(待扫码)
             for c in containers:
                 if c.get("status") == "running" and c.get("node_id", "local") == "local":
                     cache = read_login_cache(c["name"])
                     if cache.get("logged_in") and cache.get("uin"):
                         c["uin"] = cache["uin"]
+                        c["qq_logged_in"] = True
+                    else:
+                        c["qq_logged_in"] = False
+                else:
+                    c["qq_logged_in"] = False
 
             curr_snapshot = _build_snapshot(containers)
 
@@ -101,7 +115,7 @@ async def ws_events(ws: WebSocket, token: str = Query(default="")):
                 # 发送失败（客户端已断开），退出循环
                 break
 
-            await asyncio.sleep(3)
+            await asyncio.sleep(5)
     except WebSocketDisconnect:
         pass
     except Exception as e:

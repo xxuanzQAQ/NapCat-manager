@@ -24,6 +24,28 @@ router = APIRouter(prefix="/api", tags=["containers"])
 # 容器名称校验：仅允许字母、数字、连字符、下划线、点号，1-64 字符
 _CONTAINER_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$")
 
+# NapCat 日志中二维码 URL 的多种格式正则（兼容不同版本的输出格式）
+_QR_URL_PATTERNS = [
+    re.compile(r'二维码解码URL[：:]\s*(https?://[^\s\r\n]+)'),
+    re.compile(r'QrCode\s+URL[：:]\s*(https?://[^\s\r\n]+)', re.IGNORECASE),
+    re.compile(r'qrcode.*?(https?://qr\.qq\.com/[^\s\r\n]+)', re.IGNORECASE),
+    re.compile(r'(https://qr\.qq\.com/[^\s\r\n]+)'),
+    re.compile(r'二维码[：:](https?://[^\s\r\n]+)'),
+]
+
+
+def _extract_qr_url_from_logs(logs: str) -> str:
+    """从 NapCat 容器日志中提取二维码 URL，兼容多种日志格式。
+    返回 URL 字符串，未找到则返回空字符串。
+    """
+    for pattern in _QR_URL_PATTERNS:
+        m = pattern.search(logs)
+        if m:
+            url = m.group(1).strip()
+            if url:
+                return url
+    return ""
+
 
 class CreateRequest(BaseModel):
     name: str
@@ -31,8 +53,7 @@ class CreateRequest(BaseModel):
     # 高级选项（均有默认值，快速创建无需填写）
     docker_image: str = ""          # 空则取全局配置
     webui_port: int = 0             # 0 = 自动分配
-    http_port: int = 0
-    ws_port: int = 0
+    http_port: int = 0              # OneBot HTTP 端口（容器内 3001）
     memory_limit: int = 0           # MB, 0 = 不限制
     restart_policy: str = "always"  # always / unless-stopped / on-failure / no
     network_mode: str = "bridge"    # bridge / host / none
@@ -67,14 +88,14 @@ async def api_public_containers():
     """
     containers = await run_in_threadpool(cluster_manager.list_all_containers)
 
-    # 批量并行检测运行中本地容器的登录状态
+    # 批量并行检测运行中本地容器的登录状态（使用分级缓存，实际 API 调用远少于容器数）
     running_local_names = [
         c["name"] for c in containers
         if c["status"] == "running" and c.get("node_id", "local") == "local"
     ]
     if running_local_names:
         try:
-            await run_in_threadpool(docker_manager.batch_check_login, running_local_names, 6.0)
+            await run_in_threadpool(docker_manager.batch_check_login, running_local_names, 8.0)
         except Exception:
             logger.warning("公开容器列表：批量登录检测异常")
 
@@ -86,22 +107,49 @@ async def api_public_containers():
             "status": c["status"],
             "node_id": c.get("node_id", "local"),
         }
-        # 读取刚刚写入/已有的缓存
         cached = read_login_cache(c["name"])
-        if cached.get("logged_in") and cached.get("uin"):
+        if c["status"] == "running" and cached.get("logged_in") and cached.get("uin"):
             item["uin"] = cached["uin"]
+            item["qq_logged_in"] = True
+            item["kicked"] = False
+        elif c["status"] == "running" and cached.get("kicked"):
+            # QQ 被踢下线：容器在运行但 QQ 掉线且不会推二维码，需要重启
+            item["uin"] = cached.get("uin", "")
+            item["qq_logged_in"] = False
+            item["kicked"] = True
+        else:
+            item["qq_logged_in"] = False
+            item["kicked"] = False
         result.append(item)
     return {"status": "ok", "containers": result}
 
 
+@router.post("/public/containers/{name}/restart")
+async def api_public_restart_container(name: str, node_id: str = "local"):
+    """公开重启接口（无需认证）——专供用户面板在QQ掉线时自助重启容器。
+
+    仅允许 restart 操作（不允许 stop / delete 等危险操作）。
+    重启后清除该容器的登录状态缓存，使前端能立即感知到状态变化。
+    """
+    from services.docker_manager import _login_cache
+    import time as _time
+
+    success = await run_in_threadpool(cluster_manager.action_container, node_id, name, "restart")
+    if not success:
+        raise HTTPException(status_code=500, detail="重启失败，容器可能不存在或无法操作")
+
+    # 清除登录缓存，让下次检测能立即触发新的状态探测
+    _login_cache[name] = {"logged_in": False, "ts": _time.time()}
+    logger.info("用户面板触发容器 %s 重启（公开接口）", name)
+    return {"status": "ok", "message": f"容器 {name} 重启指令已发送"}
+
+
 @router.get("/public/qr/batch")
 async def api_batch_qr_status():
-    """批量获取所有未登录容器的 QR 状态（用户面板专用）。
+    """批量获取所有运行中容器的 QR / 登录状态（用户面板专用）。
 
-    一次请求返回所有容器状态，替代前端 N 个独立 /qrcode 请求。
-    已登录容器：从缓存直接返回 logged_in + uin。
-    未登录容器：并行读取本地 qrcode.png 文件。
-    全部操作在线程池内并行执行，单核弱但多线程场景下性能最优。
+    核心优化：登录检测和 QR 读取全部通过文件系统（Docker Volume 宿主机路径）完成，
+    零网络请求，彻底解决容器多时 HTTP 探测堆积卡顿问题。
     """
     import time as _time
     containers = await run_in_threadpool(cluster_manager.list_all_containers)
@@ -110,22 +158,30 @@ async def api_batch_qr_status():
     if not running:
         return {"status": "ok", "items": {}}
 
-    # 先批量检测登录状态（并行，利用缓存）
+    # 批量并行检测登录状态（主要走文件系统，几乎无耗时）
     running_local_names = [
         c["name"] for c in running if c.get("node_id", "local") == "local"
     ]
     if running_local_names:
-        await run_in_threadpool(docker_manager.batch_check_login, running_local_names, 6.0)
+        try:
+            await run_in_threadpool(docker_manager.batch_check_login, running_local_names, 8.0)
+        except Exception:
+            logger.warning("批量 QR 状态：登录检测异常，将使用现有缓存")
 
     def resolve_one(c: dict) -> tuple:
         """单容器 QR 解析（在线程池中执行）"""
         name = c["name"]
         node_id = c.get("node_id", "local")
 
-        # 已登录 → 直接返回
         cached = read_login_cache(name)
+
+        # 已登录 → 直接返回
         if cached.get("logged_in"):
             return name, {"status": "logged_in", "uin": cached.get("uin", "")}
+
+        # kicked（被踢下线）→ 不推二维码，提示需要重启
+        if cached.get("kicked"):
+            return name, {"status": "need_restart", "uin": cached.get("uin", "")}
 
         # 远程节点
         if node_id != "local":
@@ -137,15 +193,55 @@ async def api_batch_qr_status():
                 pass
             return name, {"status": "waiting"}
 
-        # 本地：读 qrcode.png
+        # 本地未登录：从 Docker Volume 读 qrcode.png（零网络请求）
         try:
-            qr_path = os.path.join(get_data_dir(), name, "cache", "qrcode.png")
-            if os.path.exists(qr_path):
-                age = _time.time() - os.path.getmtime(qr_path)
-                if age < 120:
-                    with open(qr_path, "rb") as f:
-                        data = base64.b64encode(f.read()).decode("utf-8")
-                    return name, {"status": "ok", "url": f"data:image/png;base64,{data}", "type": "file"}
+            if docker_manager.client:
+                container_obj = docker_manager.client.containers.get(name)
+                vol = docker_manager._get_volume_paths(container_obj)
+                # qrcode.png 在 QQ data volume 下的 NapCat cache 目录
+                qq_dir = vol.get("qq", "")
+                config_dir = vol.get("config", "")
+
+                # 先尝试 QQ volume 下的 cache 目录
+                qr_path = ""
+                for search_dir in [qq_dir, config_dir]:
+                    if not search_dir:
+                        continue
+                    candidate = os.path.join(search_dir, "NapCat", "cache", "qrcode.png")
+                    if os.path.exists(candidate):
+                        qr_path = candidate
+                        break
+                    candidate2 = os.path.join(search_dir, "cache", "qrcode.png")
+                    if os.path.exists(candidate2):
+                        qr_path = candidate2
+                        break
+
+                if qr_path:
+                    age = _time.time() - os.path.getmtime(qr_path)
+                    if age < 120:  # 2分钟内的二维码才有效
+                        with open(qr_path, "rb") as f:
+                            data = base64.b64encode(f.read()).decode("utf-8")
+                        return name, {"status": "ok", "url": f"data:image/png;base64,{data}", "type": "file"}
+        except Exception:
+            pass
+
+        # 文件系统读取失败 → 用 docker get_archive（备用，有一定耗时）
+        try:
+            png_bytes = docker_manager.get_qrcode_from_fs(name)
+            if png_bytes:
+                data = base64.b64encode(png_bytes).decode("utf-8")
+                return name, {"status": "ok", "url": f"data:image/png;base64,{data}", "type": "file"}
+        except Exception:
+            pass
+
+        # 最终兜底：从 Docker 日志提取二维码 URL（兼容多种 NapCat 日志格式）
+        try:
+            if docker_manager.client:
+                c_obj = docker_manager.client.containers.get(name)
+                logs = c_obj.logs(tail=100).decode("utf-8", errors="ignore")
+                qr_url = _extract_qr_url_from_logs(logs)
+                if qr_url:
+                    return name, {"status": "ok", "url": qr_url, "type": "log"}
         except Exception:
             pass
 
@@ -157,7 +253,7 @@ async def api_batch_qr_status():
     try:
         results = await asyncio.wait_for(
             asyncio.gather(*tasks, return_exceptions=True),
-            timeout=8.0,
+            timeout=12.0,
         )
     except asyncio.TimeoutError:
         results = []
@@ -174,6 +270,17 @@ async def api_batch_qr_status():
 @router.get("/containers")
 async def api_list_containers(session: dict = Depends(get_current_user)):
     containers = await run_in_threadpool(cluster_manager.list_all_containers)
+    # 附带 qq_logged_in 字段，让管理员面板也能正确显示"待登录"状态
+    for c in containers:
+        if c.get("status") == "running" and c.get("node_id", "local") == "local":
+            cache = read_login_cache(c["name"])
+            if cache.get("logged_in") and cache.get("uin"):
+                c.setdefault("uin", cache["uin"])
+                c["qq_logged_in"] = True
+            else:
+                c["qq_logged_in"] = False
+        else:
+            c["qq_logged_in"] = False
     return {"status": "ok", "containers": containers}
 
 
@@ -226,21 +333,18 @@ async def api_create_container(
     }
 
     # 端口分配：用户指定 > 自动递增
+    # NapCat 容器实际端口：WebUI=6099, OneBot HTTP=3001
     used_ports = docker_manager.get_used_ports()
     webui_base = app_config.get("webui_base_port", 6000)
-    http_base = app_config.get("http_base_port", 3000)
-    ws_base = app_config.get("ws_base_port", 3001)
+    http_base  = app_config.get("http_base_port",  3001)   # OneBot HTTP 在容器内监听 3001
 
     webui_port = req.webui_port if req.webui_port > 0 else docker_manager.find_available_port(webui_base, used_ports)
     used_ports.add(webui_port)
     http_port = req.http_port if req.http_port > 0 else docker_manager.find_available_port(http_base, used_ports)
-    used_ports.add(http_port)
-    ws_port = req.ws_port if req.ws_port > 0 else docker_manager.find_available_port(ws_base, used_ports)
 
     ports = {
         "6099/tcp": webui_port,
-        "3000/tcp": http_port,
-        "3001/tcp": ws_port,
+        "3001/tcp": http_port,   # OneBot HTTP（容器内 3001，非 3000）
     }
 
     docker_image = req.docker_image or app_config.get("docker_image", "mlikiowa/napcat-docker:latest")
@@ -271,9 +375,9 @@ async def api_create_container(
         "operator_name": session["userName"],
         "container_name": req.name,
         "node_id": req.node_id,
-        "ports": {"webui": webui_port, "http": http_port, "ws": ws_port},
+        "ports": {"webui": webui_port, "http": http_port},
     })
-    return {"status": "ok", "container_id": cid, "ports": {"webui": webui_port, "http": http_port, "ws": ws_port}}
+    return {"status": "ok", "container_id": cid, "ports": {"webui": webui_port, "http": http_port}}
 
 
 # ============ 容器操作 (启动/停止/重启/删除...) ============
@@ -292,6 +396,15 @@ async def api_container_action(
     success = await run_in_threadpool(cluster_manager.action_container, node_id, name, action)
     if not success:
         raise HTTPException(status_code=500, detail="Action failed")
+
+    # 执行会导致容器停止/重启/暂停/删除的操作后，立即清除登录状态缓存。
+    # 防止容器因 restart_policy=always 被 Docker 自动重启后，旧缓存
+    # (logged_in=True, TTL 尚未到期) 持续误报"已登录"状态。
+    if action in ("stop", "restart", "kill", "pause", "delete") and node_id == "local":
+        from services.docker_manager import _login_cache
+        import time as _time
+        _login_cache[name] = {"logged_in": False, "ts": _time.time()}
+        logger.info("容器 %s 执行 [%s]，已清除登录状态缓存", name, action)
 
     # 删除时可选清理本地数据目录
     if action == "delete" and delete_data and node_id == "local":
@@ -414,16 +527,37 @@ async def get_qr_code(
             return result
         return {"status": "waiting"}
 
-    # 0. 只读内存缓存判断是否已登录（不触发任何 API 调用，零阻塞）
+    # 0. 只读内存缓存判断是否已登录或 kicked（不触发任何 API 调用，零阻塞）
     cached = read_login_cache(name)
     if cached.get("logged_in"):
         return {"status": "logged_in", "uin": cached.get("uin", "")}
+    # kicked：QQ 被踢下线，不会推二维码，提示用户重启容器
+    if cached.get("kicked"):
+        return {"status": "need_restart", "uin": cached.get("uin", "")}
 
     # 1. 优先读本地挂载目录中的二维码文件（NapCat 未登录时持续输出）
     import time as _time
     qr_file_fresh = False
     try:
+        # 优先尝试新创建容器的绑定挂载路径
         qr_path = os.path.join(get_data_dir(), name, "cache", "qrcode.png")
+        # 若本地路径不存在，尝试从 Docker Volume 宿主机路径查找
+        if not os.path.exists(qr_path) and docker_manager.client:
+            try:
+                container_obj = docker_manager.client.containers.get(name)
+                vol = docker_manager._get_volume_paths(container_obj)
+                for search_dir in [vol.get("qq", ""), vol.get("config", "")]:
+                    if not search_dir:
+                        continue
+                    for subpath in ["NapCat/cache/qrcode.png", "cache/qrcode.png"]:
+                        candidate = os.path.join(search_dir, subpath)
+                        if os.path.exists(candidate):
+                            qr_path = candidate
+                            break
+                    if os.path.exists(qr_path):
+                        break
+            except Exception:
+                pass
         if os.path.exists(qr_path):
             age = _time.time() - os.path.getmtime(qr_path)
             if age < 120:
@@ -441,7 +575,7 @@ async def get_qr_code(
     except Exception as e:
         logger.debug(f"读取本地二维码文件失败: {e}")
 
-    # 2. 文件不存在/过期 → 主动触发登录检测（5s 轮询场景，开销可接受）
+    # 2. 文件不存在/过期 → 主动触发登录检测（走文件系统，几乎无开销）
     if not qr_file_fresh:
         try:
             login = await run_in_threadpool(docker_manager.check_login_status, name)
@@ -450,16 +584,26 @@ async def get_qr_code(
         except Exception:
             pass
 
-    # 3. 回落：从 Docker 日志提取二维码 URL
+    # 2.5 尝试用 docker get_archive 从容器内读取 qrcode.png（老容器兜底）
+    if not qr_file_fresh:
+        try:
+            png_bytes = await run_in_threadpool(docker_manager.get_qrcode_from_fs, name)
+            if png_bytes:
+                data = base64.b64encode(png_bytes).decode("utf-8")
+                return {"status": "ok", "url": f"data:image/png;base64,{data}", "type": "file"}
+        except Exception:
+            pass
+
+    # 3. 回落：从 Docker 日志提取二维码 URL（兼容多种 NapCat 日志格式）
     try:
         if docker_manager.client:
             container = docker_manager.client.containers.get(name)
             if container.status != "running":
                 return {"status": "waiting"}
-            logs = container.logs(tail=50).decode('utf-8', errors='ignore')
-            qr_url_match = re.search(r'二维码解码URL:\s*(https://[^\s]+)', logs)
-            if qr_url_match:
-                return {"status": "ok", "url": qr_url_match.group(1), "type": "log"}
+            logs = container.logs(tail=100).decode('utf-8', errors='ignore')
+            qr_url = _extract_qr_url_from_logs(logs)
+            if qr_url:
+                return {"status": "ok", "url": qr_url, "type": "log"}
     except Exception as e:
         logger.debug(f"从日志获取二维码失败: {e}")
 
@@ -513,6 +657,78 @@ async def receive_login_event(request: Request):
     return {"status": "ok"}
 
 
+# ============ 容器路径解析（支持 bind mount 与 Docker named volume 两种形态） ============
+
+# sub_path 到 Docker 容器内挂载点的映射（用于从 Volume 反查宿主机路径）
+_SUBPATH_TO_DEST = {
+    "config":  "/app/napcat/config",
+    "qq_data": "/app/.config/QQ",
+    "plugins": "/app/napcat/plugins",
+    "cache":   "/app/napcat/cache",
+}
+
+
+def _resolve_container_dir(name: str, sub_path: str) -> str:
+    """解析容器子目录的宿主机绝对路径，优先 bind mount 本地目录，兜底 Docker Volume。
+
+    sub_path 示例：'config'、'qq_data'、'cache'
+    返回存在的宿主机目录路径，未找到则返回空字符串。
+    """
+    # 优先：新建容器使用 bind mount，路径在 data_dir/{name}/{sub_path}
+    local_dir = os.path.join(get_data_dir(), name, sub_path)
+    if os.path.isdir(local_dir):
+        return local_dir
+
+    # 兜底：旧容器使用 Docker named volume，从容器 Mounts 中找宿主机路径
+    try:
+        if not docker_manager.client:
+            return ""
+        c = docker_manager.client.containers.get(name)
+        dest_target = _SUBPATH_TO_DEST.get(sub_path, "")
+        for m in c.attrs.get("Mounts", []):
+            dest = m.get("Destination", "")
+            src  = m.get("Source", "")
+            if not src:
+                continue
+            # 精确匹配或前缀匹配（sub_path='config' → dest='/app/napcat/config'）
+            if dest_target and dest == dest_target:
+                if os.path.isdir(src):
+                    return src
+            # 通用兜底：按 sub_path 关键字匹配 destination
+            if sub_path == "config" and "/napcat/config" in dest and os.path.isdir(src):
+                return src
+            if sub_path == "qq_data" and ("/.config/QQ" in dest or "/app/.config" in dest) and os.path.isdir(src):
+                return src
+    except Exception as e:
+        logger.debug("_resolve_container_dir %s/%s 失败: %s", name, sub_path, e)
+    return ""
+
+
+def _resolve_container_file(name: str, filename: str) -> str:
+    """将形如 'config/onebot11_xxx.json' 的相对路径解析为宿主机绝对路径。
+
+    先拆分首段（sub_path），用 _resolve_container_dir 定位宿主机目录，
+    再拼接剩余部分，并做路径遍历检查。
+    返回存在或可写的绝对路径；解析失败则返回空字符串。
+    """
+    parts = filename.replace("\\", "/").split("/", 1)
+    sub_path = parts[0]
+    rest = parts[1] if len(parts) > 1 else ""
+
+    base_dir = _resolve_container_dir(name, sub_path)
+    if not base_dir:
+        # 未找到 volume，退回全局 data_dir（保持原有行为）
+        return os.path.join(get_data_dir(), name, filename)
+
+    if rest:
+        full = os.path.realpath(os.path.join(base_dir, rest))
+        real_base = os.path.realpath(base_dir)
+        if not full.startswith(real_base):
+            raise HTTPException(status_code=400, detail="Invalid path: directory traversal detected")
+        return full
+    return base_dir
+
+
 # ============ 配置文件读写 ============
 
 @router.get("/containers/{name}/config/{filename:path}")
@@ -520,7 +736,13 @@ def read_container_config(
     name: str, filename: str,
     session: dict = Depends(get_current_user),
 ):
-    file_path = _safe_path(get_data_dir(), name, filename)
+    try:
+        file_path = _resolve_container_file(name, filename)
+    except HTTPException:
+        raise
+    except Exception:
+        file_path = _safe_path(get_data_dir(), name, filename)
+
     if not os.path.exists(file_path):
         return {"status": "not_found", "content": ""}
     with open(file_path, "r", encoding="utf-8") as f:
@@ -533,7 +755,13 @@ def save_container_config(
     request: Request = None,
     session: dict = Depends(get_current_user),
 ):
-    file_path = _safe_path(get_data_dir(), name, filename)
+    try:
+        file_path = _resolve_container_file(name, filename)
+    except HTTPException:
+        raise
+    except Exception:
+        file_path = _safe_path(get_data_dir(), name, filename)
+
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(req.content)
@@ -553,7 +781,24 @@ def list_container_files(
     name: str, path: str = "",
     session: dict = Depends(get_current_user),
 ):
-    target_dir = _safe_path(get_data_dir(), name, path)
+    # path 形如 '' / 'config' / 'qq_data' / 'config/subdir'
+    if path:
+        parts = path.replace("\\", "/").split("/", 1)
+        sub_path = parts[0]
+        rest = parts[1] if len(parts) > 1 else ""
+        base_dir = _resolve_container_dir(name, sub_path)
+        if base_dir:
+            if rest:
+                target_dir = os.path.realpath(os.path.join(base_dir, rest))
+                if not target_dir.startswith(os.path.realpath(base_dir)):
+                    raise HTTPException(status_code=400, detail="Invalid path")
+            else:
+                target_dir = base_dir
+        else:
+            target_dir = _safe_path(get_data_dir(), name, path)
+    else:
+        target_dir = _safe_path(get_data_dir(), name, "")
+
     if not os.path.exists(target_dir):
         return {"status": "ok", "files": [], "folders": [], "current_path": path}
 

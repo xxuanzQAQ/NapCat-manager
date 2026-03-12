@@ -8,6 +8,8 @@ import io
 import json
 import time
 import tarfile
+import hashlib
+import base64
 import urllib.request
 import urllib.error
 import docker
@@ -21,16 +23,34 @@ from services.config import get_data_dir
 
 # 登录状态缓存：{container_name: {uin, nickname, ts, method}}
 _login_cache: Dict[str, Dict] = {}
-_LOGIN_CACHE_TTL = 8  # 秒，配合前端 5s QR 轮询，第二次即可刷新
+# 已登录容器缓存 120s（状态稳定，无需频繁探测）
+# 未登录容器缓存 20s（需要更新二维码，但也不能太频繁）
+_LOGIN_CACHE_TTL_LOGGED_IN = 120   # 秒：已登录容器缓存时长
+_LOGIN_CACHE_TTL_NOT_LOGGED = 20   # 秒：未登录容器缓存时长（减少无效探测）
+_LOGIN_CACHE_TTL = 120  # 兼容旧代码的默认值，实际走上面两个分支
 
 # Stats 缓存：{container_name: {stats_dict, ts}}
 _stats_cache: Dict[str, Dict] = {}
-_STATS_CACHE_TTL = 8  # 秒，stats 采集较慢(1-2s)，缓存 8s
+_STATS_CACHE_TTL = 12  # 秒，stats 采集较慢(1-2s)，缓存 12s 减轻 Docker API 压力
 
-# Docker API 调用专用线程池（隔离卡死容器，避免阻塞主线程池）
-# 60+ 实例场景：每实例 check_login 需 1-2 个线程，32 workers 可同时处理 16-32 实例
-_docker_pool = ThreadPoolExecutor(max_workers=32, thread_name_prefix="docker-api")
-_DOCKER_STATS_TIMEOUT = 3   # 秒，c.stats(stream=False) 超时
+# Docker API 调用专用线程池 - 三层隔离，彻底消除线程池耗尽与嵌套死锁：
+#
+# _docker_pool:      顶层任务池 —— check_login_status / get_stats / get_basic_stats 等复合任务
+#                    worker 数 = 64：避免创建过多线程消耗内存，通过缓存机制减少实际并发量
+#
+# _docker_io_pool:   中层 HTTP IO 池 —— check_login_via_webui 内的 _fetch_qrcode/_fetch_public_info
+#                    worker 数 = 64：限制并发 HTTP 连接数，防止服务器连接耗尽
+#
+# _docker_sys_pool:  系统调用专用池 —— containers.list / c.stats / c.logs / images.list
+#                    纯 Docker socket 调用，独立不与 HTTP 请求竞争
+#                    worker 数 = 32：stats 调用每次约 1-2s，32 workers 支撑 32 个并发采集
+#                    注意：64容器全并发时每批最多 32 个同时执行，其余排队但有缓存兜底
+#
+# 三池完全隔离：上层提交不会因下层满载而死锁，下层也不会被上层任务挤占
+_docker_pool     = ThreadPoolExecutor(max_workers=64,  thread_name_prefix="docker-api")
+_docker_io_pool  = ThreadPoolExecutor(max_workers=64,  thread_name_prefix="docker-io")
+_docker_sys_pool = ThreadPoolExecutor(max_workers=32,  thread_name_prefix="docker-sys")
+_DOCKER_STATS_TIMEOUT = 4   # 秒，c.stats(stream=False) 超时，适当放宽避免误判
 _DOCKER_LOGS_TIMEOUT = 2    # 秒，c.logs() 超时
 
 
@@ -57,7 +77,7 @@ class DockerManager:
         if not self.client:
             return []
         try:
-            future = _docker_pool.submit(self.client.containers.list, all=True)
+            future = _docker_sys_pool.submit(self.client.containers.list, all=True)
             containers = future.result(timeout=_DOCKER_STATS_TIMEOUT)
         except FuturesTimeoutError:
             logger.warning("Docker 容器列表获取超时")
@@ -155,7 +175,7 @@ class DockerManager:
             return ""
         try:
             c = self.client.containers.get(name)
-            future = _docker_pool.submit(c.logs, tail=lines)
+            future = _docker_sys_pool.submit(c.logs, tail=lines)
             raw = future.result(timeout=_DOCKER_LOGS_TIMEOUT + 3)
             return raw.decode("utf-8", errors="replace")
         except docker.errors.NotFound:
@@ -188,7 +208,7 @@ class DockerManager:
                             return file_obj.read()
                 return None
 
-            future = _docker_pool.submit(_read_archive)
+            future = _docker_sys_pool.submit(_read_archive)
             return future.result(timeout=5)
         except FuturesTimeoutError:
             logger.warning("容器 %s 文件读取超时: %s", name, path)
@@ -225,7 +245,7 @@ class DockerManager:
                 return result
 
             # 用线程池 + 超时包裹 Docker stats API，防止卡死容器阻塞
-            future = _docker_pool.submit(c.stats, stream=False)
+            future = _docker_sys_pool.submit(c.stats, stream=False)
             try:
                 stats = future.result(timeout=_DOCKER_STATS_TIMEOUT)
             except (FuturesTimeoutError, Exception) as e:
@@ -290,8 +310,9 @@ class DockerManager:
             return info
 
         # 端口解析 — 使用公共方法
+        # NapCat 容器实际端口：WebUI=6099, OneBot HTTP=3001（非标准 3000）
         info["webui_port"] = self.resolve_host_port(c, "6099/tcp")
-        info["http_port"] = self.resolve_host_port(c, "3000/tcp")
+        info["http_port"] = self.resolve_host_port(c, "3001/tcp")
 
         # WebUI token — 优先从宿主机本地文件读取
         try:
@@ -340,7 +361,7 @@ class DockerManager:
 
         # Version from logs — 用线程池 + 超时包裹，防止卡死容器阻塞
         try:
-            future = _docker_pool.submit(c.logs, tail=200)
+            future = _docker_sys_pool.submit(c.logs, tail=200)
             raw_logs = future.result(timeout=_DOCKER_LOGS_TIMEOUT)
             logs_tail = raw_logs.decode("utf-8", errors="ignore")
             ver_match = re.search(r"NapCat\.Core Version:\s*([\d.]+)", logs_tail)
@@ -400,12 +421,173 @@ class DockerManager:
             pass
         return 0
 
-    # ============ 登录状态检测（A+B 级联，预留 C 插件事件） ============
+    # ============ 登录状态检测 ============
+
+    def _get_volume_paths(self, container_obj) -> Dict[str, str]:
+        """从容器 Mounts 信息中提取 Volume 的宿主机路径。
+        返回 {'config': '/sd/docker-data/volumes/xxx/_data',
+               'qq':     '/sd/docker-data/volumes/yyy/_data'}
+        完全不发网络请求，纯内存操作。
+        """
+        paths: Dict[str, str] = {}
+        try:
+            for m in container_obj.attrs.get("Mounts", []):
+                dest = m.get("Destination", "")
+                src  = m.get("Source", "")
+                if not src:
+                    continue
+                if "/napcat/config" in dest:
+                    paths["config"] = src
+                elif "/.config/QQ" in dest or "/app/.config" in dest:
+                    paths["qq"] = src
+        except Exception:
+            pass
+        return paths
+
+    def check_login_via_fs(self, name: str) -> Dict:
+        """【主检测方案】直接读 Docker Volume 文件系统，零网络请求。
+
+        判断逻辑（必须同时满足）：
+          1. 容器处于 running 状态（掉线/停止 → 直接返回未登录，清除旧缓存）
+          2. config volume 中存在 onebot11_{uin}.json 或 napcat_{uin}.json
+             或 webui.json 的 autoLoginAccount 非空
+          3. QQ volume 中存在活跃 session 文件（nt_qq 目录或 nt_token 文件）
+             ── 防止 QQ 掉线后仅凭旧配置文件误判为已登录
+
+        返回：{logged_in, uin, method:'fs'} 或 {logged_in: False}
+        """
+        if not self.client:
+            return {"logged_in": False}
+        try:
+            c = self.client.containers.get(name)
+            if c.status != "running":
+                # 容器不在运行 → 强制清除登录缓存，避免旧缓存持续误报已登录
+                if name in _login_cache:
+                    _login_cache[name] = {"logged_in": False, "ts": time.time()}
+                return {"logged_in": False}
+        except docker.errors.NotFound:
+            return {"logged_in": False}
+
+        vol = self._get_volume_paths(c)
+        config_dir = vol.get("config", "")
+        qq_dir = vol.get("qq", "")
+
+        if not config_dir or not os.path.isdir(config_dir):
+            return {"logged_in": False}
+
+        try:
+            files = os.listdir(config_dir)
+        except OSError:
+            return {"logged_in": False}
+
+        # 从配置文件提取候选 uin
+        # 优先级1：webui.json 的 autoLoginAccount（权威当前账号，NapCat 登录成功后自动更新）
+        # 当容器曾登录多个 QQ 号时 config 目录会保留多个 onebot11_*.json 历史文件，
+        # 仅凭文件名无法判断当前活跃账号；autoLoginAccount 始终反映最新登录的账号。
+        candidate_uin = ""
+        webui_path = os.path.join(config_dir, "webui.json")
+        if os.path.exists(webui_path):
+            try:
+                cfg = json.loads(open(webui_path, "r", encoding="utf-8").read())
+                uin = str(cfg.get("autoLoginAccount", "") or "").strip()
+                if uin and uin.isdigit() and uin != "0":
+                    candidate_uin = uin
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        # 优先级2：onebot11_{uin}.json 文件名（兜底）
+        if not candidate_uin:
+            for f in files:
+                if f.startswith("onebot11_") and f.endswith(".json"):
+                    uin = f[len("onebot11_"):-len(".json")].strip()
+                    if uin and uin.isdigit():
+                        candidate_uin = uin
+                        break
+
+        # 优先级3：napcat_{uin}.json 文件名（再次兜底）
+        if not candidate_uin:
+            for f in files:
+                if f.startswith("napcat_") and f.endswith(".json") and f != "napcat.json":
+                    uin = f[len("napcat_"):-len(".json")].strip()
+                    if uin and uin.isdigit():
+                        candidate_uin = uin
+                        break
+
+        if not candidate_uin:
+            return {"logged_in": False}
+
+        # 关键验证：检查 QQ volume 中是否存在活跃的 session/token 文件
+        # QQ 掉线后这些文件通常仍存在，但我们检测最近是否有活跃 nt_qq 目录
+        # 若无 QQ volume 挂载（旧容器）则跳过此验证，直接信任配置文件
+        if qq_dir and os.path.isdir(qq_dir):
+            # 检查 nt_qq 目录存在且有 nt_token 或 session 文件（会话活跃的标志）
+            session_found = False
+            try:
+                for root, dirs, fnames in os.walk(qq_dir):
+                    depth = root.replace(qq_dir, "").count(os.sep)
+                    if depth > 3:
+                        dirs.clear()
+                        continue
+                    for fname in fnames:
+                        if fname in ("nt_token", "nt_token.json", "token.json") or \
+                                fname.endswith(".token"):
+                            session_found = True
+                            break
+                    if session_found:
+                        break
+                    # nt_qq_* 目录存在即认为有 session
+                    for d in dirs:
+                        if d.startswith("nt_qq_") or d == "nt_qq":
+                            session_found = True
+                            break
+                    if session_found:
+                        break
+            except OSError:
+                session_found = True  # 读取失败时不拦截，信任配置文件
+
+            if not session_found:
+                # QQ volume 中找不到 session 文件 → QQ 可能已退出登录
+                return {"logged_in": False}
+
+        # 通过所有检验 → 已登录
+        method = "fs" if any(f.startswith("onebot11_") for f in files) else "fs_napcat"
+        return {"logged_in": True, "uin": candidate_uin, "method": method}
+
+    def get_qrcode_from_fs(self, name: str) -> Optional[bytes]:
+        """直接从容器内读取 qrcode.png（通过 docker get_archive）。
+        比 HTTP WebUI 请求快且不需要认证。120s 内的文件才返回（避免返回旧码）。
+        """
+        if not self.client:
+            return None
+        try:
+            c = self.client.containers.get(name)
+            if c.status != "running":
+                return None
+
+            def _read():
+                bits, stat = c.get_archive("/app/napcat/cache/qrcode.png")
+                # stat 含 mtime 信息
+                mtime = stat.get("mtime", "")
+                buf = io.BytesIO()
+                for chunk in bits:
+                    buf.write(chunk)
+                buf.seek(0)
+                with tarfile.open(fileobj=buf) as tar:
+                    member = tar.next()
+                    if member:
+                        f = tar.extractfile(member)
+                        if f:
+                            return f.read()
+                return None
+
+            future = _docker_sys_pool.submit(_read)
+            return future.result(timeout=4)
+        except Exception:
+            return None
 
     def check_login_via_onebot(self, name: str) -> Dict:
-        """方案 A：通过 OneBot 11 HTTP API /get_login_info 检测。
-        已登录 → {logged_in: True, uin, nickname, method: 'onebot'}
-        未登录 → {logged_in: False}
+        """方案 A（备用）：通过 OneBot HTTP API 检测，仅在端口存在时尝试。
+        NapCat 容器 OneBot HTTP 监听容器内 3001 端口（非 3000）。
         """
         if not self.client:
             return {"logged_in": False}
@@ -413,9 +595,9 @@ class DockerManager:
             c = self.client.containers.get(name)
             if c.status != "running":
                 return {"logged_in": False}
-            http_port = self.resolve_host_port(c, "3000/tcp")
+            http_port = self.resolve_host_port(c, "3001/tcp")
             if not http_port:
-                return {"logged_in": False}
+                return {"logged_in": False}  # 无端口直接跳过，不等超时
             req = urllib.request.Request(
                 f"http://127.0.0.1:{http_port}/get_login_info",
                 data=b"{}",
@@ -439,16 +621,140 @@ class DockerManager:
             pass
         return {"logged_in": False}
 
+    def check_online_via_onebot(self, name: str) -> Optional[bool]:
+        """通过 OneBot /get_status 检测 QQ 实时在线状态（仅用于掉线感知轮询）。
+
+        与 check_login_via_onebot 的区别：
+          - check_login_via_onebot 用 /get_login_info 判断"是否完成登录"
+          - 本方法用 /get_status 判断"QQ 当前是否在线"，能感知 KickedOffLine 掉线
+
+        返回值：
+          True  → QQ 在线（online=true）
+          False → QQ 离线（online=false，如被踢下线）
+          None  → 无法判断（端口不通、容器未运行等），不更新缓存
+        """
+        if not self.client:
+            return None
+        try:
+            c = self.client.containers.get(name)
+            if c.status != "running":
+                return False
+            http_port = self.resolve_host_port(c, "3001/tcp")
+            if not http_port:
+                return None  # 没有暴露 OneBot HTTP 端口，无法判断
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{http_port}/get_status",
+                data=b"{}",
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=2.0) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+            if result.get("status") == "ok" and "data" in result:
+                return bool(result["data"].get("online", False))
+            # retcode != 0 或无 data，无法确认，不误判
+            return None
+        except (urllib.error.URLError, json.JSONDecodeError, OSError, ValueError):
+            return None  # 网络不通、超时 → 不误判为离线
+        except docker.errors.NotFound:
+            return False
+
+    def poll_online_status(self) -> None:
+        """后台轮询：对"已登录"和"kicked"状态容器调用 /get_status，感知 QQ 掉线与恢复。
+
+        策略：
+          已登录容器（logged_in=True）：
+            - online=True  → 不动缓存
+            - online=False → 写入 kicked=True 标记，永久锁定离线状态，
+                             阻止 check_login_status 的 WebUI 层将其覆盖回已登录
+            - None → 不动缓存，避免误判
+
+          kicked 容器（kicked=True）：
+            - online=True  → 解除 kicked，恢复正常检测（说明用户已重启并重新登录）
+            - online=False / None → 保持 kicked 不变
+
+        由 main.py 中的 background_online_poller 每 15 秒调用一次。
+        """
+        now = time.time()
+        # 快照所有需要关注的容器（已登录 或 kicked），避免遍历时字典被并发修改
+        targets = [
+            name for name, v in list(_login_cache.items())
+            if v.get("logged_in") or v.get("kicked")
+        ]
+        for name in targets:
+            try:
+                online = self.check_online_via_onebot(name)
+                cached = _login_cache.get(name, {})
+
+                if cached.get("logged_in") and online is False:
+                    # 在线 → 掉线：写入 kicked 标记，TTL 设为超长阻止 WebUI 覆盖
+                    uin = cached.get("uin", "")
+                    _login_cache[name] = {
+                        "logged_in": False,
+                        "kicked": True,
+                        "uin": uin,
+                        "ts": now,
+                    }
+                    logger.info(
+                        "容器 %s QQ 掉线（/get_status online=false），标记为 kicked", name
+                    )
+
+                elif cached.get("kicked") and online is True:
+                    # kicked → 重新在线：解除锁定，清空缓存让 check_login_status 重新探测
+                    _login_cache[name] = {"logged_in": False, "ts": 0}
+                    logger.info(
+                        "容器 %s 重新在线（/get_status online=true），解除 kicked 标记", name
+                    )
+
+                # 其余情况不动缓存
+            except Exception as e:
+                logger.debug("poll_online_status 容器 %s 异常: %s", name, e)
+
+    def _get_webui_credential(self, webui_port: int, config_dir: str) -> str:
+        """通过 NapCat WebUI JWT 认证流程获取 Bearer Credential。
+
+        流程：
+          1. 读 config_dir/webui.json 获取 token（明文密码）
+          2. hash = sha256(token + ".napcat").hexdigest()
+          3. POST /api/auth/login {"hash": hash} → {"Credential": "<base64_json>"}
+        返回 base64 字符串，失败返回空字符串。
+        """
+        try:
+            webui_path = os.path.join(config_dir, "webui.json")
+            if not os.path.exists(webui_path):
+                return ""
+            with open(webui_path, "r", encoding="utf-8") as f:
+                token = json.loads(f.read()).get("token", "")
+            if not token:
+                return ""
+            pw_hash = hashlib.sha256((token + ".napcat").encode()).hexdigest()
+            login_req = urllib.request.Request(
+                f"http://127.0.0.1:{webui_port}/api/auth/login",
+                data=json.dumps({"hash": pw_hash}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(login_req, timeout=3) as r:
+                resp = json.loads(r.read())
+                return resp.get("data", {}).get("Credential", "")
+        except (urllib.error.URLError, json.JSONDecodeError, OSError, KeyError):
+            pass
+        return ""
+
     def check_login_via_webui(self, name: str) -> Dict:
-        """方案 B：通过 NapCat WebUI + 本地文件综合检测。
+        """【主检测方案】通过 NapCat WebUI JWT API 权威验证真实登录状态。
 
-        三重验证（全部满足才确认已登录）：
-        1. public/info 正常返回 → NapCat 在运行
-        2. qrcode.png 停止刷新（mtime > 30s）→ 不在输出二维码
-        3. onebot11_{uin}.json 或 napcat_{uin}.json 存在 → 可提取 uin
+        流程：
+          1. 获取容器 webui_port（6099/tcp 映射端口）
+          2. 从 config volume 读 webui.json → token → sha256 hash
+          3. POST /api/auth/login 获取 JWT Credential
+          4. POST /api/QQLogin/CheckLoginStatus → {isLogin, qrcodeurl}
+          5. 已登录时从配置文件提取 uin；未登录时返回 qrcode_url
 
-        单一否决：
-        - /api/qrcode 返回包含 url 的有效数据 → 确认未登录
+        返回：
+          已登录：{logged_in: True, uin, method: 'webui'}
+          未登录：{logged_in: False, qrcode_url, method: 'webui'}
+          失败：  {logged_in: False}
         """
         if not self.client:
             return {"logged_in": False}
@@ -456,187 +762,208 @@ class DockerManager:
             c = self.client.containers.get(name)
             if c.status != "running":
                 return {"logged_in": False}
+
             webui_port = self.resolve_host_port(c, "6099/tcp")
             if not webui_port:
                 return {"logged_in": False}
 
-            # 检查 1 + 2 并行：qrcode 和 public/info 同时请求（从 2s→1s）
-            def _fetch_qrcode():
-                try:
-                    qr_req = urllib.request.Request(
-                        f"http://127.0.0.1:{webui_port}/api/qrcode",
-                        headers={"User-Agent": "Mozilla/5.0"},
-                    )
-                    with urllib.request.urlopen(qr_req, timeout=1) as resp:
-                        return json.loads(resp.read().decode("utf-8"))
-                except (urllib.error.URLError, json.JSONDecodeError, OSError):
-                    return None
+            # 获取 config volume 路径
+            vol = self._get_volume_paths(c)
+            config_dir = vol.get("config", "")
+            # 兜底：尝试宿主机本地 data 目录
+            if not config_dir or not os.path.isdir(config_dir):
+                config_dir = os.path.join(get_data_dir(), name, "config")
 
-            def _fetch_public_info():
-                try:
-                    info_req = urllib.request.Request(
-                        f"http://127.0.0.1:{webui_port}/plugin/napcat-plugin-builtin/api/public/info",
-                        headers={"User-Agent": "Mozilla/5.0"},
-                    )
-                    with urllib.request.urlopen(info_req, timeout=1) as resp:
-                        return json.loads(resp.read().decode("utf-8"))
-                except (urllib.error.URLError, json.JSONDecodeError, OSError):
-                    return None
+            if not config_dir or not os.path.isdir(config_dir):
+                return {"logged_in": False}
 
-            f_qr = _docker_pool.submit(_fetch_qrcode)
-            f_info = _docker_pool.submit(_fetch_public_info)
+            # 获取 JWT Credential
+            credential = self._get_webui_credential(webui_port, config_dir)
+            if not credential:
+                logger.debug("容器 %s WebUI 认证失败，无法获取 Credential", name)
+                return {"logged_in": False}
 
-            try:
-                qr_data = f_qr.result(timeout=2)
-            except Exception:
-                qr_data = None
-            if qr_data and qr_data.get("url"):
-                return {"logged_in": False}  # 有二维码 → 确认未登录
+            # 调用 CheckLoginStatus
+            check_req = urllib.request.Request(
+                f"http://127.0.0.1:{webui_port}/api/QQLogin/CheckLoginStatus",
+                data=b"{}",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {credential}",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(check_req, timeout=3) as r:
+                data = json.loads(r.read()).get("data", {})
 
-            napcat_alive = False
-            try:
-                info_data = f_info.result(timeout=2)
-                if info_data and info_data.get("code") == 0 and "data" in info_data:
-                    napcat_alive = True
-            except Exception:
-                pass
+            is_login = data.get("isLogin", False)
+            qrcode_url = data.get("qrcodeurl", "")
 
-            # 检查 3：qrcode.png 是否停止刷新（mtime > 30s = 不在活跃输出二维码）
-            qr_stale = False
-            try:
-                qr_path = os.path.join(get_data_dir(), name, "cache", "qrcode.png")
-                if os.path.exists(qr_path):
-                    age = time.time() - os.path.getmtime(qr_path)
-                    qr_stale = age > 30
-                else:
-                    # 文件不存在也视为"不在输出"（可能登录后被清理）
-                    qr_stale = True
-            except OSError:
-                pass
-
-            # 检查 4：onebot11_{uin}.json / napcat_{uin}.json 存在 → 可提取 uin
-            uin = self._get_uin_from_config(name)
-
-            # 三重验证：NapCat 在运行 + 二维码停止刷新 + 有 uin
-            if napcat_alive and qr_stale and uin:
-                return {
-                    "logged_in": True,
-                    "uin": uin,
-                    "nickname": "",
-                    "method": "webui",
-                }
+            if is_login:
+                # 已登录：从配置文件提取候选 uin
+                uin = self._get_uin_from_config_dir(config_dir)
+                return {"logged_in": True, "uin": uin, "method": "webui"}
+            else:
+                return {"logged_in": False, "qrcode_url": qrcode_url, "method": "webui"}
 
         except docker.errors.NotFound:
             pass
+        except (urllib.error.URLError, json.JSONDecodeError, OSError) as e:
+            logger.debug("容器 %s WebUI 检测失败: %s", name, e)
         return {"logged_in": False}
 
-    def _get_uin_from_config(self, name: str) -> str:
-        """从本地 onebot11_*.json 文件名提取 uin（辅助信息，不用于登录判断）"""
+    def _get_uin_from_config_dir(self, config_dir: str) -> str:
+        """从 config 目录读取当前登录的 uin。
+
+        优先级（从高到低）：
+          1. webui.json 的 autoLoginAccount —— NapCat 在登录成功后自动写入，是权威的"当前账号"
+             当一个容器曾经登录过多个 QQ 号时，config 目录会保留多个 onebot11_*.json 历史文件，
+             仅靠文件名无法判断哪个是当前活跃账号，而 autoLoginAccount 始终反映最新的活跃账号。
+          2. onebot11_{uin}.json 文件名 —— 仅当 autoLoginAccount 为空时兜底
+          3. napcat_{uin}.json 文件名 —— 再次兜底
+
+        注意：仅用于在 WebUI 已确认登录后补充 uin，不做登录状态判断。
+        """
+        if not config_dir or not os.path.isdir(config_dir):
+            return ""
+
+        # 优先级1：webui.json autoLoginAccount（权威当前账号）
         try:
-            config_dir = os.path.join(get_data_dir(), name, "config")
-            if not os.path.exists(config_dir):
-                return ""
-            # 优先匹配 onebot11_{uin}.json（最可靠）
-            ob_files = [
-                f for f in os.listdir(config_dir)
-                if f.startswith("onebot11_") and f.endswith(".json")
-            ]
-            if ob_files:
-                latest = max(
-                    ob_files,
-                    key=lambda f: os.path.getmtime(os.path.join(config_dir, f)),
-                )
-                raw = latest.replace("onebot11_", "").replace(".json", "")
-                return _normalize_uin(raw)
-            # 回退：napcat_{uin}.json（排除 napcat_protocol_*）
-            napcat_files = [
-                f for f in os.listdir(config_dir)
-                if f.startswith("napcat_") and f.endswith(".json")
-                and not f.startswith("napcat_protocol_")
-            ]
-            if napcat_files:
-                latest = max(
-                    napcat_files,
-                    key=lambda f: os.path.getmtime(os.path.join(config_dir, f)),
-                )
-                raw = latest.replace("napcat_", "").replace(".json", "")
-                return _normalize_uin(raw)
+            webui_path = os.path.join(config_dir, "webui.json")
+            if os.path.exists(webui_path):
+                cfg = json.loads(open(webui_path, "r", encoding="utf-8").read())
+                uin = str(cfg.get("autoLoginAccount", "") or "").strip()
+                if uin and uin.isdigit() and uin != "0":
+                    return uin
+        except (json.JSONDecodeError, OSError):
+            pass
+
+        # 优先级2/3：从文件名兜底（历史容器未写 autoLoginAccount 时）
+        try:
+            files = os.listdir(config_dir)
         except OSError:
+            return ""
+        for f in files:
+            if f.startswith("onebot11_") and f.endswith(".json"):
+                uin = f[len("onebot11_"):-len(".json")].strip()
+                if uin and uin.isdigit():
+                    return uin
+        for f in files:
+            if f.startswith("napcat_") and f.endswith(".json") and f != "napcat.json":
+                uin = f[len("napcat_"):-len(".json")].strip()
+                if uin and uin.isdigit():
+                    return uin
+        return ""
+
+    def _get_uin_from_config(self, name: str) -> str:
+        """从容器 Volume 的 onebot11_*.json 文件名提取 uin（兼容旧逻辑保留）"""
+        if not self.client:
+            return ""
+        try:
+            c = self.client.containers.get(name)
+            vol = self._get_volume_paths(c)
+            config_dir = vol.get("config", "")
+            if not config_dir or not os.path.isdir(config_dir):
+                config_dir = os.path.join(get_data_dir(), name, "config")
+            return self._get_uin_from_config_dir(config_dir)
+        except (docker.errors.NotFound, OSError):
             pass
         return ""
 
     def _sync_webui_auto_login(self, name: str, uin: str) -> None:
-        """登录成功后自动同步 webui.json 中的 autoLoginAccount"""
+        """登录成功后自动同步 Volume 内 webui.json 的 autoLoginAccount"""
+        if not self.client:
+            return
         try:
-            local_webui = os.path.join(get_data_dir(), name, "config", "webui.json")
-            if not os.path.exists(local_webui):
+            c = self.client.containers.get(name)
+            vol = self._get_volume_paths(c)
+            config_dir = vol.get("config", "")
+            if not config_dir:
                 return
-            with open(local_webui, "r", encoding="utf-8") as wf:
+            webui_path = os.path.join(config_dir, "webui.json")
+            if not os.path.exists(webui_path):
+                return
+            with open(webui_path, "r", encoding="utf-8") as wf:
                 w_config = json.loads(wf.read())
-
             modified = False
+            if w_config.get("autoLoginAccount") != uin:
+                w_config["autoLoginAccount"] = uin
+                modified = True
             if "login" not in w_config or not isinstance(w_config["login"], dict):
                 w_config["login"] = {}
                 modified = True
-
             login_cfg = w_config["login"]
             if login_cfg.get("account") != uin:
                 login_cfg["account"] = uin
                 login_cfg["password"] = ""
                 modified = True
-            if login_cfg.get("autoLoginAccount") != uin:
-                login_cfg["autoLoginAccount"] = uin
-                modified = True
-            if w_config.get("autoLoginAccount") != uin:
-                w_config["autoLoginAccount"] = uin
-                modified = True
-
             if modified:
-                with open(local_webui, "w", encoding="utf-8") as wf:
+                with open(webui_path, "w", encoding="utf-8") as wf:
                     json.dump(w_config, wf, indent=4, ensure_ascii=False)
-        except (json.JSONDecodeError, OSError, KeyError) as e:
+        except (docker.errors.NotFound, json.JSONDecodeError, OSError, KeyError) as e:
             logger.debug("同步自动登录配置失败: %s", e)
 
     def check_login_status(self, name: str, force: bool = False) -> Dict:
-        """级联检测登录状态：A(OneBot) → B(WebUI)。
+        """检测登录状态，优先级：kicked 锁定 > 缓存 TTL > WebUI JWT API > OneBot HTTP。
 
-        带内存缓存（TTL=15s），force=True 跳过缓存（用户主动刷新时）。
-        返回 {logged_in, uin, nickname, method} 或 {logged_in: False}
-
-        预留方案 C：未来插件事件可直接写入 _login_cache，
-        本方法读取时若缓存有效则直接返回，无需 API 调用。
+        kicked 状态：由 poll_online_status 在检测到 /get_status online=false 时写入。
+                     kicked=True 时跳过 WebUI 检测（WebUI 的 isLogin 在 KickedOffLine
+                     后仍返回 true，不可信），直接返回离线，直到轮询到 online=True 为止。
+        WebUI API：通过 NapCat WebUI /api/QQLogin/CheckLoginStatus 获取真实登录状态。
+        OneBot HTTP：通过 /get_login_info 验证。
+        缓存：已登录 TTL=120s，未登录 TTL=20s。
         """
         now = time.time()
 
-        if not force and name in _login_cache:
+        if name in _login_cache:
             cached = _login_cache[name]
-            if now - cached.get("ts", 0) < _LOGIN_CACHE_TTL:
+
+            # kicked 状态：完全绕过 WebUI 检测，直接返回，由轮询器负责解除
+            if cached.get("kicked"):
                 return cached
 
-        # 层 1: OneBot HTTP API（最可靠）
+            if not force:
+                ttl = _LOGIN_CACHE_TTL_LOGGED_IN if cached.get("logged_in") else _LOGIN_CACHE_TTL_NOT_LOGGED
+                if now - cached.get("ts", 0) < ttl:
+                    return cached
+
+        # 层 1：WebUI JWT API（权威，直接返回 isLogin 字段）
+        result = self.check_login_via_webui(name)
+        if result.get("method") == "webui":
+            # 写入缓存前再次检查 kicked（防止 poll_online_status 刚写入的 kicked 被覆盖）
+            # kicked 由 poll_online_status 独占管理，WebUI 无权覆盖
+            current = _login_cache.get(name, {})
+            if current.get("kicked"):
+                return current
+            result["ts"] = now
+            _login_cache[name] = result
+            return result
+
+        # 层 2：OneBot HTTP（仅当容器有 3001 端口且启用了 httpServers 时才有效）
         result = self.check_login_via_onebot(name)
         if result["logged_in"]:
+            current = _login_cache.get(name, {})
+            if current.get("kicked"):
+                return current
             result["ts"] = now
             _login_cache[name] = result
             return result
 
-        # 层 2: WebUI API
-        result = self.check_login_via_webui(name)
-        if result["logged_in"]:
-            result["ts"] = now
-            _login_cache[name] = result
-            return result
-
-        # 全部失败 → 未登录（短缓存避免频繁请求）
+        # WebUI 和 OneBot 都失败（容器无网络端口或未运行）→ 返回未登录
+        # 同样需要守护 kicked 状态
+        current = _login_cache.get(name, {})
+        if current.get("kicked"):
+            return current
         result = {"logged_in": False, "ts": now}
         _login_cache[name] = result
         return result
 
-    def batch_check_login(self, names: List[str], timeout: float = 6.0) -> Dict[str, Dict]:
+    def batch_check_login(self, names: List[str], timeout: float = 8.0) -> Dict[str, Dict]:
         """批量并行检测多个容器的登录状态。
 
         利用线程池并行执行，单个超时不阻塞其他。
         60+ 实例场景：缓存命中的直接返回，未命中的并行 API 探测。
+        使用分级 TTL：已登录 120s，未登录 20s。
         返回 {name: {logged_in, uin, ...}, ...}
         """
         results: Dict[str, Dict] = {}
@@ -644,9 +971,16 @@ class DockerManager:
         now = time.time()
 
         # 先过滤：缓存命中的直接返回，无需占线程池
+        # kicked 容器永久命中缓存（不受 TTL 限制），只有 poll_online_status 才能解除
+        # 已登录用长缓存，未登录用短缓存
         for name in names:
             cached = _login_cache.get(name, {})
-            if now - cached.get("ts", 0) < _LOGIN_CACHE_TTL:
+            # kicked 状态：永不过期，直接返回缓存，防止 WebUI 覆盖
+            if cached.get("kicked"):
+                results[name] = cached
+                continue
+            ttl = _LOGIN_CACHE_TTL_LOGGED_IN if cached.get("logged_in") else _LOGIN_CACHE_TTL_NOT_LOGGED
+            if now - cached.get("ts", 0) < ttl:
                 results[name] = cached
             else:
                 need_check.append(name)
@@ -659,14 +993,22 @@ class DockerManager:
             _docker_pool.submit(self.check_login_status, name): name
             for name in need_check
         }
-        from concurrent.futures import as_completed
-        for future in as_completed(futures, timeout=timeout):
-            name = futures[future]
-            try:
-                results[name] = future.result(timeout=0.1)
-            except Exception:
-                results[name] = {"logged_in": False}
-        # 超时未完成的标记为未登录
+        from concurrent.futures import as_completed, TimeoutError as FuturesTimeoutError
+        try:
+            for future in as_completed(futures, timeout=timeout):
+                name = futures[future]
+                try:
+                    results[name] = future.result(timeout=0.1)
+                except Exception:
+                    results[name] = {"logged_in": False}
+        except FuturesTimeoutError:
+            # 部分任务在 timeout 内未完成（高并发或网络慢），静默处理
+            logger.debug(
+                "batch_check_login 超时：%d/%d 个容器未完成，标记为未登录",
+                sum(1 for n in need_check if n not in results),
+                len(need_check),
+            )
+        # 超时或异常未完成的统一标记为未登录
         for name in need_check:
             if name not in results:
                 results[name] = {"logged_in": False}
@@ -734,7 +1076,7 @@ class DockerManager:
         if not self.client:
             return []
         try:
-            future = _docker_pool.submit(self.client.images.list)
+            future = _docker_sys_pool.submit(self.client.images.list)
             images = future.result(timeout=_DOCKER_STATS_TIMEOUT)
             result = []
             for img in images:

@@ -2,7 +2,7 @@ import { useEffect, useState, useContext } from 'react';
 import {
     Box, Typography, CircularProgress,
     Button, IconButton, useTheme, Skeleton, Pagination,
-    TextField, InputAdornment, Dialog, DialogContent
+    TextField, InputAdornment, Dialog, DialogContent, Tooltip
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -12,13 +12,16 @@ import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import TranslateIcon from '@mui/icons-material/Translate';
 import SearchIcon from '@mui/icons-material/Search';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import QrCode2Icon from '@mui/icons-material/QrCode2';
 import { ThemeModeContext, LanguageContext } from '../App';
 import { useTranslate } from '../i18n';
 import { publicApi, containerApi, type Container } from '../services/api';
 import { useToast } from '../components/Toast';
 
 interface QRState {
-    status: 'logged_in' | 'loaded' | 'waiting' | 'error';
+    // need_restart: QQ 被踢下线，容器在运行但不会推二维码，需重启
+    status: 'logged_in' | 'loaded' | 'waiting' | 'need_restart' | 'error';
     url?: string;
     uin?: string;
 }
@@ -36,6 +39,7 @@ export default function UserDashboard() {
     const [qrCodes, setQrCodes] = useState<Record<string, QRState>>({});
     const [searchQuery, setSearchQuery] = useState('');
     const [refreshingCards, setRefreshingCards] = useState<Record<string, boolean>>({});
+    const [restartingCards, setRestartingCards] = useState<Record<string, boolean>>({});
     const [bgUrl, setBgUrl] = useState('');
     const [qrDialogName, setQrDialogName] = useState<string | null>(null);
 
@@ -115,12 +119,19 @@ export default function UserDashboard() {
             }
 
             setContainers(list);
-            // 接口已返回 uin，直接设置已登录容器的 QR 状态
             setQrCodes(prev => {
                 const next = { ...prev };
                 for (const c of list) {
-                    if (c.uin) {
+                    if (c.status === 'running' && c.qq_logged_in && c.uin) {
                         next[c.name] = { status: 'logged_in', uin: c.uin };
+                    } else if (c.status === 'running' && (c as any).kicked) {
+                        // QQ 被踢下线：锁定为 need_restart，不让后续轮询覆盖
+                        next[c.name] = { status: 'need_restart', uin: (c as any).uin || '' };
+                    } else if (c.status !== 'running' || c.qq_logged_in === false) {
+                        // 容器离线 或 容器在线但QQ未登录 → 仅当之前是 logged_in 时才覆盖
+                        if (prev[c.name]?.status === 'logged_in') {
+                            next[c.name] = { status: 'waiting' };
+                        }
                     }
                 }
                 return next;
@@ -139,12 +150,19 @@ export default function UserDashboard() {
             if (data.status === 'logged_in') {
                 setQrCodes(prev => ({ ...prev, [name]: { status: 'logged_in', uin: data.uin } }));
                 fetchContainers();
+            } else if (data.status === 'need_restart') {
+                // QQ 被踢下线：不推二维码，显示"待重启"
+                setQrCodes(prev => ({ ...prev, [name]: { status: 'need_restart', uin: data.uin || '' } }));
             } else if (data.status === 'ok' && data.url) {
                 const url = data.type === 'file' ? data.url
                     : `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(data.url)}`;
                 setQrCodes(prev => ({ ...prev, [name]: { status: 'loaded', url } }));
             } else {
-                setQrCodes(prev => ({ ...prev, [name]: { status: 'waiting' } }));
+                // 仅当当前不是 need_restart 时才降为 waiting，防止覆盖 kicked 状态
+                setQrCodes(prev => {
+                    if (prev[name]?.status === 'need_restart') return prev;
+                    return { ...prev, [name]: { status: 'waiting' } };
+                });
             }
         } catch {
             setQrCodes(prev => ({ ...prev, [name]: { status: 'error' } }));
@@ -165,12 +183,18 @@ export default function UserDashboard() {
                         if (!prev[name] || prev[name].status !== 'logged_in') {
                             hasNewLogin = true;
                         }
+                    } else if (item.status === 'need_restart') {
+                        // QQ 被踢下线：标记为待重启，不推二维码
+                        next[name] = { status: 'need_restart', uin: (item as any).uin || '' };
                     } else if (item.status === 'ok' && item.url) {
                         const url = item.type === 'file' ? item.url
                             : `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(item.url)}`;
                         next[name] = { status: 'loaded', url };
                     } else {
-                        next[name] = { status: 'waiting' };
+                        // waiting 只覆盖非 loaded 且非 need_restart 的情况，防止覆盖 kicked 状态
+                        if (!prev[name] || (prev[name].status !== 'loaded' && prev[name].status !== 'need_restart')) {
+                            next[name] = { status: 'waiting' };
+                        }
                     }
                 }
                 return next;
@@ -193,10 +217,27 @@ export default function UserDashboard() {
         }
     };
 
+    // 用户自助重启掉线容器（公开接口，无需管理员权限）
+    const restartContainer = async (name: string, node_id = 'local') => {
+        setRestartingCards(prev => ({ ...prev, [name]: true }));
+        setQrCodes(prev => ({ ...prev, [name]: { status: 'waiting' } }));
+        try {
+            await publicApi.restartContainer(name, node_id);
+            toast.success(`${name} 重启指令已发送，请稍候扫码登录`);
+            setTimeout(() => fetchContainers(), 3000);
+            setTimeout(() => loadQR(name, node_id), 8000);
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : '重启失败';
+            toast.error(`重启失败：${msg}`);
+        } finally {
+            setRestartingCards(prev => ({ ...prev, [name]: false }));
+        }
+    };
+
     useEffect(() => {
         fetchContainers();
         let interval: ReturnType<typeof setInterval>;
-        const start = () => { interval = setInterval(fetchContainers, 15000); };
+        const start = () => { interval = setInterval(fetchContainers, 30000); }; // 从 15s 延长到 30s
         const stop = () => clearInterval(interval);
         const onVis = () => {
             if (document.visibilityState === 'visible') { fetchContainers(); start(); } else { stop(); }
@@ -207,11 +248,12 @@ export default function UserDashboard() {
     }, []);
 
     useEffect(() => {
-        // 有未登录的运行中容器 → 批量轮询 QR 状态（5s，单次请求覆盖所有容器）
-        const needQR = containers.filter(c => c.status === 'running' && !c.uin);
+        // 有未登录的运行中容器（且非 kicked 状态）→ 批量轮询 QR 状态（10s 一次）
+        // kicked 状态容器不需要轮询二维码，由 fetchContainers 感知状态变化
+        const needQR = containers.filter(c => c.status === 'running' && !c.uin && !(c as any).kicked);
         if (needQR.length === 0) return;
         loadBatchQR();
-        const interval = setInterval(loadBatchQR, 5000);
+        const interval = setInterval(loadBatchQR, 10000);
         return () => clearInterval(interval);
     }, [containers]);
 
@@ -288,15 +330,23 @@ export default function UserDashboard() {
                         ) : displayedContainers.map(c => {
                             const qr = qrCodes[c.name] || { status: 'loading' };
                             const isRefreshing = refreshingCards[c.name] || false;
+                            const isRestarting = restartingCards[c.name] || false;
+                            const isOffline = c.status !== 'running';
+                            // QQ 被踢下线（容器运行中但QQ掉线，不会推二维码，需重启）
+                            const isKicked = !isOffline && ((c as any).kicked === true || qr.status === 'need_restart');
+                            // 容器在线但QQ未登录（真正待扫码，非 kicked 状态）
+                            const isWaitingLogin = c.status === 'running' && c.qq_logged_in === false && !isKicked;
+                            const needsQR = c.status === 'running' && qr.status === 'loaded' && !isKicked;
                             const uinDigits = qr.uin ? String(qr.uin).replace(/\D/g, '') : '';
                             return (
                                 <Box key={c.id} sx={{
                                     background: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.65)',
                                     backdropFilter: 'blur(12px)',
-                                    borderRadius: 3, border: `1px solid ${theme.palette.divider}`,
+                                    borderRadius: 3,
+                                    border: `1px solid ${isOffline ? '#f87171' : isKicked ? '#f97316' : isWaitingLogin ? '#f59e0b' : theme.palette.divider}`,
                                     p: 2, display: 'flex', flexDirection: 'row', alignItems: 'stretch',
                                     transition: 'all 0.2s', gap: 1.5,
-                                    '&:hover': { borderColor: theme.palette.primary.main, boxShadow: `0 0 0 1px ${theme.palette.primary.main}22` }
+                                    '&:hover': { borderColor: isOffline ? '#ef4444' : isKicked ? '#ea580c' : isWaitingLogin ? '#d97706' : theme.palette.primary.main, boxShadow: `0 0 0 1px ${isOffline ? '#ef444422' : isKicked ? '#f9731622' : isWaitingLogin ? '#f59e0b22' : theme.palette.primary.main + '22'}` }
                                 }}>
                                     {/* 左侧 - 信息区 */}
                                     <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -319,47 +369,139 @@ export default function UserDashboard() {
                                                 </Typography>
                                             </Box>
                                         )}
-                                        {/* 底部：状态 + 刷新按钮，两端对齐 */}
+                                        {/* 底部：状态 + 操作按钮，两端对齐 */}
                                         <Box sx={{ mt: 'auto', pt: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                            {c.status === 'running' ? (
+                                            {/* 状态标签：四态 - 在线 / 待重启(kicked) / 待登录 / 离线 */}
+                                            {c.status === 'running' && !isWaitingLogin && !isKicked ? (
                                                 <Typography variant="caption" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.4, color: '#059669', fontWeight: 600, fontSize: '0.7rem' }}>
                                                     <Box sx={{ width: 5, height: 5, bgcolor: '#10b981', borderRadius: '50%' }} /> {t('admin.online')}
                                                 </Typography>
+                                            ) : isKicked ? (
+                                                <Typography variant="caption" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.4, color: '#ea580c', fontWeight: 700, fontSize: '0.7rem' }}>
+                                                    <Box sx={{ width: 5, height: 5, bgcolor: '#f97316', borderRadius: '50%' }} /> 待重启
+                                                </Typography>
+                                            ) : isWaitingLogin ? (
+                                                <Typography variant="caption" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.4, color: '#d97706', fontWeight: 700, fontSize: '0.7rem' }}>
+                                                    <Box sx={{ width: 5, height: 5, bgcolor: '#f59e0b', borderRadius: '50%' }} /> 待登录
+                                                </Typography>
                                             ) : (
-                                                <Typography variant="caption" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.4, color: 'text.secondary', fontWeight: 600, fontSize: '0.7rem' }}>
-                                                    <Box sx={{ width: 5, height: 5, bgcolor: '#94a3b8', borderRadius: '50%' }} /> {c.status.toUpperCase()}
+                                                <Typography variant="caption" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.4, color: '#ef4444', fontWeight: 700, fontSize: '0.7rem' }}>
+                                                    <Box sx={{ width: 5, height: 5, bgcolor: '#ef4444', borderRadius: '50%' }} /> 离线
                                                 </Typography>
                                             )}
-                                            <IconButton
-                                                size="small"
-                                                disabled={isRefreshing}
-                                                onClick={() => refreshCard(c.name, c.node_id)}
-                                                sx={{ color: 'text.secondary', p: 0.5 }}
-                                            >
-                                                {isRefreshing ? <CircularProgress size={14} /> : <RefreshIcon sx={{ fontSize: 16 }} />}
-                                            </IconButton>
+                                            {/* 操作按钮区 */}
+                                            <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                                                {/* 掉线、被踢下线或待扫码时显示重启按钮 */}
+                                                {(isOffline || isKicked || isWaitingLogin) && (
+                                                    <Tooltip title={isKicked ? '重启容器以重新登录' : isWaitingLogin ? '重启容器以刷新二维码' : '重启容器'}>
+                                                        <span>
+                                                            <IconButton
+                                                                size="small"
+                                                                disabled={isRestarting}
+                                                                onClick={() => restartContainer(c.name, c.node_id)}
+                                                                sx={{ color: '#f97316', p: 0.5, '&:hover': { color: '#ea580c' } }}
+                                                            >
+                                                                {isRestarting ? <CircularProgress size={14} /> : <RestartAltIcon sx={{ fontSize: 16 }} />}
+                                                            </IconButton>
+                                                        </span>
+                                                    </Tooltip>
+                                                )}
+                                                {/* 运行中且有二维码时，显示放大二维码按钮 */}
+                                                {needsQR && (
+                                                    <Tooltip title="放大查看二维码">
+                                                        <IconButton
+                                                            size="small"
+                                                            onClick={() => setQrDialogName(c.name)}
+                                                            sx={{ color: '#6366f1', p: 0.5 }}
+                                                        >
+                                                            <QrCode2Icon sx={{ fontSize: 16 }} />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                )}
+                                                {/* 刷新按钮（仅运行中容器） */}
+                                                {!isOffline && (
+                                                    <Tooltip title="刷新状态">
+                                                        <IconButton
+                                                            size="small"
+                                                            disabled={isRefreshing}
+                                                            onClick={() => refreshCard(c.name, c.node_id)}
+                                                            sx={{ color: 'text.secondary', p: 0.5 }}
+                                                        >
+                                                            {isRefreshing ? <CircularProgress size={14} /> : <RefreshIcon sx={{ fontSize: 16 }} />}
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                )}
+                                            </Box>
                                         </Box>
                                     </Box>
                                     {/* 右侧 - QR / 状态区 */}
                                     <Box
-                                        onClick={() => qr.status === 'loaded' ? setQrDialogName(c.name) : undefined}
+                                        onClick={() => qr.status === 'loaded' && !isOffline && !isKicked ? setQrDialogName(c.name) : undefined}
                                         sx={{
                                             width: 140, minHeight: 140, borderRadius: 2, overflow: 'hidden',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            flexDirection: 'column', gap: 1, flexShrink: 0,
                                             bgcolor: theme.palette.mode === 'dark' ? '#1e293b' : '#f8fafc',
-                                            cursor: qr.status === 'loaded' ? 'pointer' : 'default',
+                                            cursor: (qr.status === 'loaded' && !isOffline && !isKicked) ? 'pointer' : 'default',
                                             transition: 'transform 0.15s',
-                                            '&:hover': qr.status === 'loaded' ? { transform: 'scale(1.04)' } : {},
+                                            '&:hover': (qr.status === 'loaded' && !isOffline && !isKicked) ? { transform: 'scale(1.04)' } : {},
                                         }}
                                     >
-                                        {c.status !== 'running' ? (
-                                            <CloudOffIcon sx={{ color: '#94a3b8', fontSize: 32 }} />
+                                        {isOffline ? (
+                                            // 离线：显示图标 + 文字 + 重启提示
+                                            <>
+                                                <CloudOffIcon sx={{ color: '#ef4444', fontSize: 32 }} />
+                                                <Typography variant="caption" sx={{ color: '#ef4444', fontWeight: 700, fontSize: '0.68rem', textAlign: 'center', px: 1 }}>
+                                                    已离线
+                                                </Typography>
+                                                <Button
+                                                    size="small"
+                                                    variant="contained"
+                                                    disabled={isRestarting}
+                                                    onClick={() => restartContainer(c.name, c.node_id)}
+                                                    startIcon={isRestarting ? <CircularProgress size={10} color="inherit" /> : <RestartAltIcon sx={{ fontSize: 13 }} />}
+                                                    sx={{
+                                                        fontSize: '0.65rem', py: 0.3, px: 1, minWidth: 0,
+                                                        bgcolor: '#f97316', '&:hover': { bgcolor: '#ea580c' },
+                                                        borderRadius: 1.5, textTransform: 'none',
+                                                    }}
+                                                >
+                                                    {isRestarting ? '重启中...' : '重启'}
+                                                </Button>
+                                            </>
+                                        ) : isKicked ? (
+                                            // QQ 被踢下线：不推二维码，显示重启提示
+                                            <>
+                                                <RestartAltIcon sx={{ color: '#f97316', fontSize: 32 }} />
+                                                <Typography variant="caption" sx={{ color: '#ea580c', fontWeight: 700, fontSize: '0.68rem', textAlign: 'center', px: 1 }}>
+                                                    QQ 已掉线
+                                                </Typography>
+                                                <Button
+                                                    size="small"
+                                                    variant="contained"
+                                                    disabled={isRestarting}
+                                                    onClick={() => restartContainer(c.name, c.node_id)}
+                                                    startIcon={isRestarting ? <CircularProgress size={10} color="inherit" /> : <RestartAltIcon sx={{ fontSize: 13 }} />}
+                                                    sx={{
+                                                        fontSize: '0.65rem', py: 0.3, px: 1, minWidth: 0,
+                                                        bgcolor: '#f97316', '&:hover': { bgcolor: '#ea580c' },
+                                                        borderRadius: 1.5, textTransform: 'none',
+                                                    }}
+                                                >
+                                                    {isRestarting ? '重启中...' : '重启'}
+                                                </Button>
+                                            </>
                                         ) : qr.status === 'loaded' ? (
                                             <img src={qr.url} alt="QR" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                         ) : qr.status === 'logged_in' ? (
                                             <Typography variant="caption" sx={{ color: '#059669', fontWeight: 600, fontSize: '0.7rem' }}>{t('user.loggedIn')}</Typography>
                                         ) : qr.status === 'waiting' || qr.status === 'loading' ? (
-                                            <CircularProgress size={24} sx={{ color: '#94a3b8' }} />
+                                            <>
+                                                <CircularProgress size={24} sx={{ color: '#94a3b8' }} />
+                                                <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.65rem', textAlign: 'center', px: 1 }}>
+                                                    等待二维码...
+                                                </Typography>
+                                            </>
                                         ) : (
                                             <Typography variant="caption" color="error" sx={{ fontSize: '0.7rem' }}>{t('user.loadFailed')}</Typography>
                                         )}

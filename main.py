@@ -48,6 +48,21 @@ async def background_flush_logs():
         await asyncio.sleep(60)
         operation_logger.flush()
 
+
+async def background_online_poller():
+    """每 15 秒对所有缓存为"已登录"的容器调用 OneBot /get_status，
+    感知 QQ KickedOffLine / 掉线事件，立即将缓存标记为离线。
+    """
+    from services.docker_manager import docker_manager
+    while True:
+        await asyncio.sleep(15)
+        try:
+            await asyncio.get_event_loop().run_in_executor(
+                None, docker_manager.poll_online_status
+            )
+        except Exception as e:
+            logger.debug("background_online_poller 异常: %s", e)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用启动/关闭生命周期"""
@@ -84,6 +99,8 @@ async def lifespan(app: FastAPI):
     monitor_task = asyncio.create_task(background_monitor())
     # 启动操作日志定时刷盘任务
     flush_task = asyncio.create_task(background_flush_logs())
+    # 启动 QQ 在线状态轮询任务（每 15s 轮询 /get_status，感知 KickedOffLine）
+    online_poll_task = asyncio.create_task(background_online_poller())
 
     # 启动定时任务调度器
     from services.scheduler import scheduler
@@ -94,6 +111,7 @@ async def lifespan(app: FastAPI):
     # 关闭时刷盘
     monitor_task.cancel()
     flush_task.cancel()
+    online_poll_task.cancel()
     await scheduler.stop()
     operation_logger.flush()
     cleanup_expired_tokens()

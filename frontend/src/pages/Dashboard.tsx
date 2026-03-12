@@ -398,9 +398,13 @@ export default function Dashboard() {
                                             );
                                         })()}
                                     </Box>
-                                    {c.status === 'running' ? (
+                                    {c.status === 'running' && c.qq_logged_in !== false ? (
                                         <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 0.25, borderRadius: 8, bgcolor: 'rgba(16,185,129,0.1)', color: '#059669', border: '1px solid rgba(16,185,129,0.2)', fontWeight: 600, mr: isBatchMode ? 4 : 0 }}>
                                             <Box sx={{ width: 6, height: 6, bgcolor: '#10b981', borderRadius: '50%' }} /> {t('admin.online')}
+                                        </Typography>
+                                    ) : c.status === 'running' && c.qq_logged_in === false ? (
+                                        <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 0.25, borderRadius: 8, bgcolor: 'rgba(245,158,11,0.1)', color: '#d97706', border: '1px solid rgba(245,158,11,0.2)', fontWeight: 600, mr: isBatchMode ? 4 : 0 }}>
+                                            <Box sx={{ width: 6, height: 6, bgcolor: '#f59e0b', borderRadius: '50%' }} /> 待登录
                                         </Typography>
                                     ) : (
                                         <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 0.25, borderRadius: 8, bgcolor: 'rgba(100,116,139,0.1)', color: theme.palette.text.secondary, border: '1px solid rgba(100,116,139,0.2)', fontWeight: 600, mr: isBatchMode ? 4 : 0 }}>

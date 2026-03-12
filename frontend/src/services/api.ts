@@ -13,6 +13,8 @@ export interface Container {
     created: string;
     node_id: string;
     uin?: string;
+    /** 容器running且QQ已登录=true；容器running但QQ未登录(待扫码)=false */
+    qq_logged_in?: boolean;
 }
 
 export interface ContainerStats {
@@ -238,6 +240,22 @@ export const publicApi = {
         });
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
+        }
+        return response.json();
+    },
+
+    // 公开重启容器（用户面板自助重启掉线的QQ）
+    restartContainer: async (name: string, nodeId: string = 'local'): Promise<{
+        status: string; message?: string;
+    }> => {
+        const response = await fetch(`${API_BASE}/public/containers/${name}/restart?node_id=${nodeId}`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: '重启失败' }));
+            throw new Error(err.detail || `HTTP ${response.status}`);
         }
         return response.json();
     },

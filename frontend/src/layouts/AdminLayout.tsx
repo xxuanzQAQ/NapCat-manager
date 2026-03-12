@@ -62,10 +62,11 @@ export default function AdminLayout() {
     }, []);
 
     // WS 未连接时回退到 HTTP 轮询（首次加载 + 断线容灾）
+    // 延长到 10s：避免 WS 不稳定时前端疯狂轮询加重后端压力
     useEffect(() => {
         if (wsConnected) return;
         refreshContainers();
-        const fallback = setInterval(refreshContainers, 5000);
+        const fallback = setInterval(refreshContainers, 10000);
         return () => clearInterval(fallback);
     }, [wsConnected, refreshContainers]);
 
