@@ -8,6 +8,11 @@ __pycache__/
 *.egg-info/
 dist/
 
+# Virtual environments
+.venv/
+venv/
+env/
+
 # Node / Frontend
 frontend/node_modules/
 frontend/dist/
@@ -24,15 +29,25 @@ frontend/build_result.txt
 .DS_Store
 Thumbs.db
 
-# Runtime data
-config/
+# ============================================================
+# 运行时数据与敏感配置（绝不提交到版本控制）
+# ============================================================
+
+# 应用配置（含 initialized 状态、端口等启动参数）
+# 仅忽略实际运行时配置，保留示例配置文件
+config/*
+!config/config.example.json
+
+# 实例数据目录（含 QQ 账号数据、token、聊天记录等）
 data/
+
+# 数据库文件
 *.db
 *.db-journal
 *.db-wal
 *.db-shm
 
-# Environment
+# 环境变量配置
 .env
 .env.local
 .env.*.local
@@ -42,4 +57,7 @@ data/
 
 # Migration leftovers
 *.migrated
+
+# pip 安装脚本（不应提交到仓库）
+get-pip.py
 

@@ -91,6 +91,8 @@ class ClusterManager:
 
         def check_node(node: Dict) -> Dict:
             node_copy = node.copy()
+            # 从返回给前端的节点数据中移除 api_key，防止密钥通过 API 泄露
+            node_copy.pop("api_key", None)
             if node.get("id") == "local":
                 import sys
                 from services.config import app_config
@@ -98,7 +100,6 @@ class ClusterManager:
 
                 node_copy["status"] = "online"
                 node_copy["ping"] = 0
-                node_copy["api_key"] = app_config.get("api_key")
                 node_copy["system"] = {
                     "cpu_percent": daemon_monitor.current_cpu,
                     "mem_percent": daemon_monitor.current_mem,

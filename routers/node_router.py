@@ -27,8 +27,11 @@ class NodeRequest(BaseModel):
 # ============ 集群配置 ============
 
 @router.get("/cluster/config")
-async def get_cluster_config(session: dict = Depends(get_current_user)):
+async def get_cluster_config(session: dict = Depends(require_admin)):
     import sys, psutil
+    raw_key: str = app_config.get("api_key") or ""
+    # api_key 脱敏：仅向管理员展示末尾 4 位，防止通过接口泄露完整密钥
+    masked_key = ("*" * (len(raw_key) - 4) + raw_key[-4:]) if len(raw_key) > 4 else "****"
     return {
         "status": "ok",
         "config": {
@@ -36,7 +39,7 @@ async def get_cluster_config(session: dict = Depends(get_current_user)):
             "webui_base_port": app_config.get("webui_base_port"),
             "http_base_port": app_config.get("http_base_port"),
             "ws_base_port": app_config.get("ws_base_port"),
-            "api_key": app_config.get("api_key"),
+            "api_key": masked_key,
             "data_dir": app_config.get("data_dir"),
         },
         "system": {
