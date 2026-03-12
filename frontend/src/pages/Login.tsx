@@ -33,13 +33,17 @@ export default function LoginPage() {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [bgLoaded, setBgLoaded] = useState(false);
+    const [bgUrl, setBgUrl] = useState('');
 
     // 随机二次元背景
     useEffect(() => {
         const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => setBgLoaded(true);
-        img.src = 'https://t.alcy.cc/ycy';
+        // 移除 crossOrigin='anonymous'，避免跨域拦截重定向的图片
+        img.onload = () => {
+            setBgUrl(img.src);
+            setBgLoaded(true);
+        };
+        img.src = 'https://t.alcy.cc/ycy?' + Date.now();
     }, []);
 
     const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -77,19 +81,21 @@ export default function LoginPage() {
                 : 'linear-gradient(135deg, #fdf2f8 0%, #ede9fe 30%, #dbeafe 70%, #f0f9ff 100%)',
         }}>
             {/* 全屏二次元背景 */}
-            <Box sx={{
-                position: 'fixed', inset: 0, zIndex: 0,
-                backgroundImage: 'url(https://t.alcy.cc/ycy)',
-                backgroundSize: 'cover', backgroundPosition: 'center',
-                opacity: bgLoaded ? (isDark ? 0.25 : 0.35) : 0,
-                transition: 'opacity 1.2s ease-in-out',
-                '&::after': {
-                    content: '""', position: 'absolute', inset: 0,
-                    background: isDark
-                        ? 'linear-gradient(180deg, rgba(15,15,26,0.3) 0%, rgba(15,15,26,0.6) 60%, rgba(15,15,26,0.9) 100%)'
-                        : 'linear-gradient(180deg, rgba(255,255,255,0.1) 0%, rgba(253,242,248,0.5) 60%, rgba(253,242,248,0.9) 100%)',
-                },
-            }} />
+            {bgLoaded && (
+                <Box sx={{
+                    position: 'fixed', inset: 0, zIndex: 0,
+                    backgroundImage: `url(${bgUrl})`,
+                    backgroundSize: 'cover', backgroundPosition: 'center',
+                    opacity: isDark ? 0.25 : 0.35,
+                    animation: 'bgSlideIn 1.2s ease-out',
+                    '&::after': {
+                        content: '""', position: 'absolute', inset: 0,
+                        background: isDark
+                            ? 'linear-gradient(180deg, rgba(15,15,26,0.3) 0%, rgba(15,15,26,0.6) 60%, rgba(15,15,26,0.9) 100%)'
+                            : 'linear-gradient(180deg, rgba(255,255,255,0.1) 0%, rgba(253,242,248,0.5) 60%, rgba(253,242,248,0.9) 100%)',
+                    },
+                }} />
+            )}
 
             {/* 装饰性渐变光球 */}
             <Box sx={{

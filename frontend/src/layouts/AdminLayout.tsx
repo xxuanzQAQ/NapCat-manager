@@ -59,6 +59,18 @@ export default function AdminLayout() {
         }
     }, []);
 
+    // 随机背景逻辑
+    const [bgUrl, setBgUrl] = useState<string>('');
+    const [bgLoaded, setBgLoaded] = useState(false);
+    useEffect(() => {
+        const img = new Image();
+        img.onload = () => {
+            setBgUrl(img.src);
+            setBgLoaded(true);
+        };
+        img.src = 'https://t.alcy.cc/ycy?' + Date.now();
+    }, []);
+
     // WS 未连接时回退到 HTTP 轮询（首次加载 + 断线容灾）
     // 延长到 10s：避免 WS 不稳定时前端疯狂轮询加重后端压力
     useEffect(() => {
@@ -82,6 +94,24 @@ export default function AdminLayout() {
                 ? 'linear-gradient(135deg, #0f0f1a 0%, #1a1028 30%, #0f172a 70%, #0f0f1a 100%)'
                 : 'linear-gradient(135deg, #fdf2f8 0%, #ede9fe 30%, #dbeafe 70%, #f0f9ff 100%)',
         }}>
+            {/* 全屏二次元背景 */}
+            {bgLoaded && (
+                <Box sx={{
+                    position: 'fixed', inset: 0, zIndex: 0,
+                    backgroundImage: `url(${bgUrl})`,
+                    backgroundSize: 'cover', backgroundPosition: 'center',
+                    opacity: isDark ? 0.2 : 0.3,
+                    animation: 'bgSlideIn 1.2s ease-out',
+                    '&::after': {
+                        content: '""', position: 'absolute', inset: 0,
+                        background: isDark
+                            ? 'linear-gradient(180deg, rgba(15,15,26,0.2) 0%, rgba(15,15,26,0.6) 50%, rgba(15,15,26,0.95) 100%)'
+                            : 'linear-gradient(180deg, rgba(255,255,255,0.1) 0%, rgba(253,242,248,0.5) 50%, rgba(253,242,248,0.95) 100%)',
+                    },
+                    pointerEvents: 'none',
+                }} />
+            )}
+
             {/* 装饰性渐变光球 */}
             <Box sx={{
                 position: 'fixed', top: '-10%', right: '10%', width: '30vw', height: '30vw',

@@ -55,7 +55,6 @@ export default function UserDashboard() {
         let cancelled = false;
         // 使用 alcy API 加载随机二次元背景
         const img = new Image();
-        img.crossOrigin = 'anonymous';
         img.onload = () => {
             if (!cancelled) setBgUrl(img.src);
         };
